@@ -20,6 +20,18 @@ canvas { display: block; width: 100%; height: 100%; cursor: none; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
+// roundRect polyfill for older browsers
+if (!ctx.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        r = Math.min(r, w/2, h/2);
+        this.moveTo(x + r, y);
+        this.arcTo(x + w, y, x + w, y + h, r);
+        this.arcTo(x + w, y + h, x, y + h, r);
+        this.arcTo(x, y + h, x, y, r);
+        this.arcTo(x, y, x + w, y, r);
+    };
+}
+
 // ── Configuration ──
 const CFG = {
     // Beam
@@ -39,16 +51,31 @@ const CFG = {
     ships: {
         skiffSpeed: 45,
         merchantSpeed: 22,
+        passengerSpeed: 20,
+        ghostShipSpeed: 12,
         skiffFlashNeed: 0.6,      // seconds of beam contact to orient
         skiffDriftTime: 5.0,      // seconds before needing re-flash
         merchantGuideRate: 0.015, // progress per second under beam
         merchantDriftRate: -0.003,// progress lost per second without beam
+        ghostShipRevealDist: 0.3, // fraction of beam length to reveal as ghost
+        ghostShipLureRadius: 200, // creatures are attracted within this range
     },
     // Creatures
     creatures: {
         lurkerSpeed: 30,
         lurkerFleeSpeed: 80,
         lurkerFleeDuration: 2.0,
+        flinchSpeed: 70,
+        flinchFreezeTime: 0.8,    // how long it freezes when illuminated
+        flinchBoltSpeed: 120,     // speed when bolting after beam leaves
+        flinchBoltDuration: 0.6,
+        mimicSpeed: 40,           // moves like a skiff
+        mimicRevealDist: 0.3,     // fraction of beam length to reveal as creature
+        abyssalSpeed: 15,
+        abyssalSize: 40,
+        abyssalPushback: 150,     // overdrive pushback speed
+        shadeSpeed: 25,
+        shadeDamageTime: 8.0,     // seconds beam weakens when shade reaches lighthouse
     },
     // Night
     night: {
@@ -74,35 +101,136 @@ const CFG = {
     // Night configs (which entities, how many, when)
     nights: [
         { // Night 1: Just skiffs
-            skiffs: 6, merchants: 0, lurkers: 0,
-            spawnInterval: [8, 14],
-            desc: "Night 1. The sea is calm. Guide the skiffs to harbor.",
+            skiffs: 4, merchants: 0, passengers: 0, ghostShips: 0,
+            lurkers: 0, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
+            spawnInterval: [8, 14], duration: 90,
+            desc: "The sea is calm. Guide the skiffs to harbor.",
         },
         { // Night 2: Skiffs + first Merchant
-            skiffs: 4, merchants: 1, lurkers: 0,
-            spawnInterval: [7, 12],
-            desc: "Night 2. A merchant vessel approaches. Hold the beam steady.",
+            skiffs: 3, merchants: 1, passengers: 0, ghostShips: 0,
+            lurkers: 0, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
+            spawnInterval: [7, 12], duration: 90,
+            desc: "A merchant vessel approaches. Hold the beam steady.",
         },
         { // Night 3: Skiffs + Merchant + Lurkers
-            skiffs: 5, merchants: 1, lurkers: 4,
-            spawnInterval: [6, 10],
-            desc: "Night 3. Something moves beneath the surface.",
+            skiffs: 4, merchants: 1, passengers: 0, ghostShips: 0,
+            lurkers: 3, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
+            spawnInterval: [6, 10], duration: 90,
+            desc: "Something moves beneath the surface.",
         },
-        { // Night 4: More of everything
-            skiffs: 6, merchants: 2, lurkers: 6,
-            spawnInterval: [5, 9],
-            desc: "Night 4. The dark is restless tonight.",
+        { // Night 4
+            skiffs: 5, merchants: 1, passengers: 0, ghostShips: 0,
+            lurkers: 5, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
+            spawnInterval: [5, 9], duration: 90,
+            desc: "The dark is restless tonight.",
         },
-        { // Night 5: Intense
-            skiffs: 8, merchants: 2, lurkers: 8,
-            spawnInterval: [4, 8],
-            desc: "Night 5. They know the ships are coming.",
+        { // Night 5
+            skiffs: 6, merchants: 2, passengers: 0, ghostShips: 0,
+            lurkers: 4, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
+            spawnInterval: [5, 9], duration: 90,
+            desc: "More ships seek the light.",
+        },
+        { // Night 6: Flinches introduced
+            skiffs: 4, merchants: 2, passengers: 0, ghostShips: 0,
+            lurkers: 6, flinches: 2, mimics: 0, abyssals: 0, shades: 0,
+            spawnInterval: [5, 8], duration: 90,
+            desc: "Quick shapes dart at the edges.",
+        },
+        { // Night 7: First passenger vessel
+            skiffs: 6, merchants: 2, passengers: 1, ghostShips: 0,
+            lurkers: 5, flinches: 3, mimics: 0, abyssals: 0, shades: 0,
+            spawnInterval: [4, 8], duration: 90,
+            desc: "A passenger vessel among them tonight.",
+        },
+        { // Night 8: Mimics introduced
+            skiffs: 5, merchants: 2, passengers: 0, ghostShips: 0,
+            lurkers: 6, flinches: 3, mimics: 1, abyssals: 0, shades: 0,
+            spawnInterval: [4, 8], duration: 105,
+            desc: "Not everything in the water is what it seems.",
+        },
+        { // Night 9: Fog
+            skiffs: 6, merchants: 2, passengers: 0, ghostShips: 0,
+            lurkers: 7, flinches: 4, mimics: 2, abyssals: 0, shades: 0,
+            spawnInterval: [4, 7], duration: 105, event: 'fog',
+            desc: "Fog rolls in from the north.",
+        },
+        { // Night 10: Ghost ship + whispers begin
+            skiffs: 5, merchants: 3, passengers: 1, ghostShips: 1,
+            lurkers: 6, flinches: 3, mimics: 2, abyssals: 0, shades: 0,
+            spawnInterval: [4, 7], duration: 105,
+            desc: "A derelict drifts from the east channel.",
+        },
+        { // Night 11: Storm
+            skiffs: 7, merchants: 2, passengers: 0, ghostShips: 0,
+            lurkers: 8, flinches: 4, mimics: 2, abyssals: 0, shades: 0,
+            spawnInterval: [3, 7], duration: 105, event: 'storm',
+            desc: "The swell is rising.",
+        },
+        { // Night 12: Red tide
+            skiffs: 6, merchants: 3, passengers: 0, ghostShips: 1,
+            lurkers: 7, flinches: 3, mimics: 3, abyssals: 0, shades: 0,
+            spawnInterval: [3, 7], duration: 105, event: 'redTide',
+            desc: "The water glows faintly tonight.",
+        },
+        { // Night 13
+            skiffs: 7, merchants: 3, passengers: 1, ghostShips: 0,
+            lurkers: 9, flinches: 5, mimics: 2, abyssals: 0, shades: 0,
+            spawnInterval: [3, 6], duration: 105,
+            desc: "The night stretches longer than it should.",
+        },
+        { // Night 14: New moon
+            skiffs: 8, merchants: 3, passengers: 0, ghostShips: 0,
+            lurkers: 8, flinches: 4, mimics: 3, abyssals: 0, shades: 0,
+            spawnInterval: [3, 6], duration: 105, event: 'newMoon',
+            desc: "No moon tonight. Only the beam.",
+        },
+        { // Night 15: Abyssals introduced
+            skiffs: 6, merchants: 3, passengers: 0, ghostShips: 0,
+            lurkers: 7, flinches: 4, mimics: 2, abyssals: 1, shades: 0,
+            spawnInterval: [3, 6], duration: 110,
+            desc: "Something vast moves beneath.",
+        },
+        { // Night 16: Shades introduced
+            skiffs: 7, merchants: 3, passengers: 1, ghostShips: 0,
+            lurkers: 8, flinches: 4, mimics: 0, abyssals: 0, shades: 2,
+            spawnInterval: [3, 6], duration: 110, event: 'fog',
+            desc: "Whispers from the base of the tower.",
+        },
+        { // Night 17: Full roster
+            skiffs: 8, merchants: 3, passengers: 0, ghostShips: 0,
+            lurkers: 9, flinches: 5, mimics: 3, abyssals: 1, shades: 2,
+            spawnInterval: [3, 6], duration: 110,
+            desc: "They come from every direction now.",
+        },
+        { // Night 18: Peak difficulty
+            skiffs: 9, merchants: 4, passengers: 0, ghostShips: 1,
+            lurkers: 10, flinches: 6, mimics: 3, abyssals: 2, shades: 3,
+            spawnInterval: [2, 5], duration: 110, event: 'storm',
+            desc: "The worst night. Hold fast.",
+        },
+        { // Night 19
+            skiffs: 8, merchants: 4, passengers: 0, ghostShips: 0,
+            lurkers: 10, flinches: 5, mimics: 4, abyssals: 1, shades: 3,
+            spawnInterval: [2, 5], duration: 110, event: 'newMoon',
+            desc: "Darkness absolute.",
+        },
+        { // Night 20: The breather
+            skiffs: 3, merchants: 1, passengers: 0, ghostShips: 0,
+            lurkers: 2, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
+            spawnInterval: [8, 14], duration: 90,
+            desc: "The sea is calm. Almost gentle.",
+        },
+        { // Night 21: The finale
+            skiffs: 7, merchants: 3, passengers: 2, ghostShips: 1,
+            lurkers: 8, flinches: 5, mimics: 3, abyssals: 2, shades: 4,
+            spawnInterval: [2, 5], duration: 120, finale: true,
+            desc: "The final night.",
         },
     ],
 };
 
 // ── Game State ──
-const GameState = { TITLE: 0, PLAYING: 1, DAWN: 2, TRANSITION: 3, NIGHT_INTRO: 4 };
+const GameState = { TITLE: 0, PLAYING: 1, DAWN: 2, TRANSITION: 3, NIGHT_INTRO: 4, UPGRADE: 5, FINALE_DARK: 6, FINALE_CHOICE: 7, FINALE_END: 8, KEEPERS_RECORD: 9 };
 let state = GameState.TITLE;
 let stateTimer = 0;
 let transitionFrom = 0, transitionTo = 0, transitionDuration = 0;
@@ -110,6 +238,222 @@ let W, H;
 let time = 0;
 let nightNum = 0;
 let nightTimer = 0;
+
+// Campaign tracking
+const campaign = {
+    nightResults: [],  // {saved, lost, passengersLost} per night
+    upgrades: [],
+    whispersCollected: [],
+    finalChoice: null,
+    totalSaved: 0,
+    totalLost: 0,
+};
+
+// Shade damage to lighthouse
+let lighthouseDamage = 0; // 0 = fine, >0 = beam weakened
+let lighthouseDamageTimer = 0;
+
+// Environmental event state
+let activeEvent = null;
+let finaleTriggered = false;
+
+// ── Upgrade System ──
+const UPGRADES = {
+    lensPolish:    { name: 'Lens Polish',    desc: 'The lens needs cleaning. A polished lens throws a brighter beam.',
+                     prompt: 'The lens needs cleaning.', effect: 'beam brightness +10%' },
+    oilReserve:    { name: 'Oil Reserve',    desc: 'There\'s oil in the supply shed. Extra fuel for the long nights.',
+                     prompt: 'There\'s oil in the supply shed.', effect: 'max fuel +15%' },
+    fogHorn:       { name: 'Fog Horn',       desc: 'The horn mechanism can be repaired. A blast reveals what hides in the dark.',
+                     prompt: 'The horn mechanism can be repaired.', effect: 'active: reveal all entities briefly' },
+    stormShutters: { name: 'Storm Shutters', desc: 'The shutters need reinforcing. Slows what comes for the tower.',
+                     prompt: 'The shutters need reinforcing.', effect: 'shades 30% slower' },
+    spyglass:      { name: 'Spyglass',       desc: 'A spyglass sits in the drawer. See further, if only for a moment.',
+                     prompt: 'A spyglass sits in the drawer.', effect: 'active: zoom beam briefly' },
+    logBook:       { name: 'Log Book',       desc: 'A proper record keeps the mind sharp. Review where danger struck.',
+                     prompt: 'The logbook needs updating.', effect: 'see loss/danger map at dawn' },
+};
+
+// Which upgrades to offer each night (pairs or triples)
+function getUpgradeChoices(night) {
+    const all = ['lensPolish', 'oilReserve', 'fogHorn', 'stormShutters', 'spyglass', 'logBook'];
+    // Filter out already-chosen upgrades (each can be picked multiple times for stacking, except abilities)
+    const abilities = campaign.upgrades.filter(u => u === 'fogHorn' || u === 'spyglass');
+    const available = all.filter(u => {
+        if ((u === 'fogHorn' || u === 'spyglass') && abilities.includes(u)) return false;
+        return true;
+    });
+    // Shuffle and pick 2-3
+    for (let i = available.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [available[i], available[j]] = [available[j], available[i]];
+    }
+    return available.slice(0, night < 5 ? 2 : 3);
+}
+
+let upgradeChoices = [];
+let upgradeSelected = -1;
+
+function applyUpgrades() {
+    // Reset to base values then apply all upgrades
+    let lensCount = campaign.upgrades.filter(u => u === 'lensPolish').length;
+    let oilCount = campaign.upgrades.filter(u => u === 'oilReserve').length;
+    let shutterCount = campaign.upgrades.filter(u => u === 'stormShutters').length;
+    // Lens Polish: beam brightness (applied as cone angle bonus)
+    CFG.beam.coneAngle = 0.38 * (1 + lensCount * 0.1);
+    // Oil Reserve: max fuel
+    CFG.beam.fuelMax = 100 * (1 + oilCount * 0.15);
+    // Storm Shutters: shade speed reduction
+    CFG.creatures.shadeSpeed = 25 * Math.pow(0.7, shutterCount);
+}
+
+// Fog Horn ability state
+let fogHornCooldown = 0;
+let fogHornActive = 0;
+const FOG_HORN_COOLDOWN = 45;
+const FOG_HORN_DURATION = 2;
+
+// Spyglass ability state
+let spyglassCooldown = 0;
+let spyglassActive = 0;
+const SPYGLASS_COOLDOWN = 20;
+const SPYGLASS_DURATION = 2;
+
+// ── Journal Entries ──
+const JOURNAL_ENTRIES = [
+    // Week 1: mundane with growing oddity
+    "Clear skies. Four vessels expected from the south. Lens cleaned, oil topped. Routine.",
+    "Wind picking up from the northeast. The merchant from Harrow Bay arrived late. Noticed scratches on the eastern railing. Gulls, probably.",
+    "Fog at dawn. Something scraped the rocks below during the night. Checked at first light\u2014nothing there. Tide marks higher than usual.",
+    "The mechanism needs oiling. It groans when it turns past north-northwest. Heard the same sound from the water tonight. Coincidence.",
+    "Two merchantmen tonight. The second one nearly missed the channel. I held the beam too long on the first. Need to be faster.",
+    "Something quick in the water. Not fish. Wrong movement. The beam caught it for a moment\u2014it stopped. Then I looked away.",
+    "The passenger vessel came through safe. Forty souls, the harbor master said. I keep thinking about the shapes at the edge of the light.",
+    // Week 2: erratic, deteriorating
+    "Can\u2019t sleep during the day anymore. The scratching is louder. Not gulls.",
+    "The fog is wrong. Things move in it. I saw\u2014no. The lens needs cleaning.",
+    "The lighthouse at Carden Point went dark three nights ago. No word from the keeper.",
+    "The water speaks. I know how that sounds. But when the beam passes over open sea, there are words. Almost.",
+    "The red in the water. The old logbook mentions it. \u2018When the sea remembers, keep the beam steady.\u2019 I don\u2019t know what that means.",
+    "Found the previous keeper\u2019s journal behind the mechanism housing. Most of it is weather. The last twenty pages are the same sentence, over and over. I can\u2019t read it in this light.",
+    "Still here.",
+    // Week 3: dynamically generated from player stats (these are fallbacks)
+    null, null, null, null, null, null, null
+];
+
+function getJournalEntry(nightIdx) {
+    // Weeks 1-2: use pre-written entries
+    if (nightIdx < 14 && JOURNAL_ENTRIES[nightIdx]) {
+        return JOURNAL_ENTRIES[nightIdx];
+    }
+    // Week 3: generate from player's night
+    const result = campaign.nightResults[nightIdx];
+    if (!result) return null;
+    const total = result.saved + result.lost;
+    if (total === 0) return 'A quiet night. Almost too quiet.';
+
+    const phrases = [];
+    if (result.saved > 0) phrases.push(`${result.saved} vessel${result.saved > 1 ? 's' : ''} guided safe`);
+    if (result.lost > 0) phrases.push(`${result.lost} met the rocks`);
+    if (result.passengersLost > 0) phrases.push('The passenger vessel did not make it');
+
+    let entry = phrases.join('. ') + '.';
+
+    // Add atmospheric flavor for week 3
+    const flavors = [
+        ' The beam felt weaker tonight.',
+        ' Something watched from the north channel.',
+        ' The darkness presses closer each night.',
+        ' I heard the horn of a ship that was not there.',
+        ' The lighthouse groaned in the wind. Or not the wind.',
+        ' Dawn took longer to arrive.',
+        ' The water was unnaturally still afterward.',
+    ];
+    entry += flavors[nightIdx % flavors.length];
+    return entry;
+}
+
+// ── Whisper System ──
+const WHISPER_FRAGMENTS = [
+    'remember', 'the bargain', 'was made', 'before you',
+    'the light', 'holds them', 'but calls', 'them too',
+    'we chose', 'to stay', 'the dark', 'is not',
+    'empty', 'it waits', 'it watches', 'with patience',
+    'the shore', 'remembers', 'every keeper', 'every light',
+    'that failed', 'and every', 'light that', 'held'
+];
+
+let activeWhispers = []; // {x, y, text, life, maxLife, collected}
+let whisperNextIndex = 0; // which fragment to spawn next
+
+function updateWhispers(dt) {
+    // Only spawn whispers from Night 10 onward
+    if (nightNum < 9) return;
+
+    // Chance to spawn a whisper when beam is over empty water
+    if (whisperNextIndex < WHISPER_FRAGMENTS.length && Math.random() < 0.003) {
+        // Check beam is over empty water (no entities nearby)
+        const checkDist = beam.getLength() * (0.3 + Math.random() * 0.5);
+        const checkX = lighthouse.x + Math.cos(beam.angle) * checkDist;
+        const checkY = lighthouse.y + Math.sin(beam.angle) * checkDist;
+
+        let nearEntity = false;
+        for (const s of ships) {
+            if (Math.sqrt((s.x - checkX) ** 2 + (s.y - checkY) ** 2) < 80) { nearEntity = true; break; }
+        }
+        for (const c of creatures) {
+            if (Math.sqrt((c.x - checkX) ** 2 + (c.y - checkY) ** 2) < 80) { nearEntity = true; break; }
+        }
+
+        if (!nearEntity && activeWhispers.length < 3) {
+            activeWhispers.push({
+                x: checkX + (Math.random() - 0.5) * 40,
+                y: checkY + (Math.random() - 0.5) * 20,
+                text: WHISPER_FRAGMENTS[whisperNextIndex],
+                life: 4.0,
+                maxLife: 4.0,
+                collected: false,
+                index: whisperNextIndex,
+            });
+            whisperNextIndex++;
+        }
+    }
+
+    // Update active whispers
+    for (let i = activeWhispers.length - 1; i >= 0; i--) {
+        const w = activeWhispers[i];
+        w.life -= dt;
+        w.y -= 8 * dt; // float upward slowly
+
+        // Check if beam is illuminating the whisper
+        if (!w.collected && beam.isPointIlluminated(w.x, w.y) > 0.15) {
+            w.collected = true;
+            if (!campaign.whispersCollected.includes(w.text)) {
+                campaign.whispersCollected.push(w.text);
+            }
+        }
+
+        if (w.life <= 0) {
+            activeWhispers.splice(i, 1);
+        }
+    }
+}
+
+function renderWhispers() {
+    for (const w of activeWhispers) {
+        const ill = beam.isPointIlluminated(w.x, w.y);
+        const lifeAlpha = w.life > 3 ? (w.maxLife - w.life) / 1 : w.life > 1 ? 1 : w.life;
+        const alpha = Math.max(0.02, ill * 0.6) * lifeAlpha;
+
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = w.collected ? '#9988bb' : '#665588';
+        ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(w.text, w.x, w.y);
+        ctx.restore();
+    }
+}
 
 // Audio context (lazy init)
 let audioCtx = null;
@@ -165,21 +509,69 @@ const input = {
     },
     handleClick() {
         if (state === GameState.TITLE) {
+            nightNum = 0;
+            campaign.nightResults = [];
+            campaign.upgrades = [];
+            campaign.totalSaved = 0;
+            campaign.totalLost = 0;
+            campaign.whispersCollected = [];
+            campaign.finalChoice = null;
+            // Reset upgradeable values
+            CFG.beam.coneAngle = 0.38;
+            CFG.beam.fuelMax = 100;
+            CFG.creatures.shadeSpeed = 25;
             changeState(GameState.NIGHT_INTRO, 1.0);
         } else if (state === GameState.DAWN) {
             if (stateTimer > 2.0) {
                 if (nightNum < CFG.nights.length) {
-                    changeState(GameState.NIGHT_INTRO, 1.0);
+                    // Go to upgrade selection (skip for night 21 / after last night)
+                    upgradeChoices = getUpgradeChoices(nightNum);
+                    upgradeSelected = -1;
+                    changeState(GameState.UPGRADE, 0.8);
                 } else {
-                    changeState(GameState.TITLE, 1.5);
-                    nightNum = 0;
+                    changeState(GameState.KEEPERS_RECORD, 2.0);
                 }
+            }
+        } else if (state === GameState.UPGRADE) {
+            if (upgradeSelected >= 0 && stateTimer > 0.5) {
+                // Apply chosen upgrade
+                const chosen = upgradeChoices[upgradeSelected];
+                campaign.upgrades.push(chosen);
+                applyUpgrades();
+                changeState(GameState.NIGHT_INTRO, 1.0);
+            } else {
+                // Check if clicking on an upgrade option
+                const optionH = 60;
+                const startY = H * 0.35;
+                for (let i = 0; i < upgradeChoices.length; i++) {
+                    const y = startY + i * (optionH + 15);
+                    if (this.my >= y && this.my <= y + optionH &&
+                        this.mx >= W * 0.2 && this.mx <= W * 0.8) {
+                        upgradeSelected = i;
+                    }
+                }
+            }
+        } else if (state === GameState.FINALE_CHOICE) {
+            if (finaleChoiceHover === 0) {
+                campaign.finalChoice = 'relight';
+                state = GameState.FINALE_END;
+                stateTimer = 0;
+            } else if (finaleChoiceHover === 1) {
+                campaign.finalChoice = 'leave';
+                state = GameState.FINALE_END;
+                stateTimer = 0;
+            }
+        } else if (state === GameState.KEEPERS_RECORD) {
+            if (stateTimer > 3.0) {
+                changeState(GameState.TITLE, 2.0);
             }
         }
     },
     get overdrive() {
         return this.keys['Space'] || this.touchCount >= 2;
-    }
+    },
+    get fogHornKey() { return this.keys['KeyF']; },
+    get spyglassKey() { return this.keys['KeyG']; }
 };
 input.init();
 
@@ -349,6 +741,51 @@ function playSound(type) {
                 osc.start(now); osc.stop(now + 0.2);
                 break;
 
+            case 'whistle': // Passenger vessel
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(550, now);
+                osc.frequency.exponentialRampToValueAtTime(700, now + 0.15);
+                osc.frequency.exponentialRampToValueAtTime(550, now + 0.4);
+                gain.gain.setValueAtTime(0.06, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+                osc.start(now); osc.stop(now + 0.6);
+                break;
+
+            case 'abyssal': // Deep sub-bass rumble
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(35, now);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+                osc.start(now); osc.stop(now + 1.5);
+                break;
+
+            case 'shade': // Whisper-like hiss
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(3000, now);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.3);
+                gain.gain.setValueAtTime(0.03, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+                osc.start(now); osc.stop(now + 0.5);
+                break;
+
+            case 'flinch': // Quick wet dart
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(150, now + 0.06);
+                gain.gain.setValueAtTime(0.06, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                osc.start(now); osc.stop(now + 0.08);
+                break;
+
+            case 'shadeHit': // Shade reaches lighthouse
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.5);
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+                osc.start(now); osc.stop(now + 1.0);
+                break;
+
             case 'overdrive':
                 osc.type = 'sawtooth';
                 osc.frequency.setValueAtTime(200, now);
@@ -483,21 +920,42 @@ const beam = {
 
     get fuelRatio() { return this.fuel / CFG.beam.fuelMax; },
 
+    // Effective power accounting for shade damage
+    get effectivePower() {
+        return lighthouseDamage > 0 ? (1 - lighthouseDamage) : 1;
+    },
+
     getConeAngle() {
-        const base = CFG.beam.coneAngle * (0.7 + this.fuelRatio * 0.3);
+        const base = CFG.beam.coneAngle * (0.7 + this.fuelRatio * 0.3) * this.effectivePower;
         return this.overdriveActive ? base * CFG.beam.overdriveMultiplier : base;
     },
 
     getLength() {
-        const base = H * CFG.beam.coneLength * (0.6 + this.fuelRatio * 0.4);
+        let base = H * CFG.beam.coneLength * (0.6 + this.fuelRatio * 0.4) * this.effectivePower;
+        // Fog event reduces beam range
+        if (activeEvent === 'fog') base *= 0.6;
+        // New Moon reduces far range
+        if (activeEvent === 'newMoon') base *= 0.7;
         return this.overdriveActive ? base * 1.3 : base;
     },
 
     isPointIlluminated(px, py) {
+        // Fog horn reveals everything temporarily
+        if (fogHornActive > 0) {
+            const dx = px - lighthouse.x;
+            const dy = py - lighthouse.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < Math.max(W, H) * 0.8) return 0.4; // moderate reveal
+        }
+
         const dx = px - lighthouse.x;
         const dy = py - lighthouse.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const len = this.getLength();
+        let len = this.getLength();
+
+        // Spyglass extends range in narrow cone
+        if (spyglassActive > 0) len *= 1.5;
+
         if (dist > len) return 0;
 
         let angleToPoint = Math.atan2(dy, dx);
@@ -505,10 +963,12 @@ const beam = {
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
 
-        const cone = this.getConeAngle();
+        let cone = this.getConeAngle();
+        // Spyglass narrows cone
+        if (spyglassActive > 0) cone *= 0.3;
+
         if (Math.abs(diff) > cone) return 0;
 
-        // Intensity: brighter near center, dimmer at edges and distance
         const angleFactor = 1 - Math.abs(diff) / cone;
         const distFactor = 1 - (dist / len);
         return angleFactor * distFactor * this.fuelRatio;
@@ -601,28 +1061,34 @@ function spawnShip(type) {
         targetAngle = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
     }
 
+    const speeds = { skiff: CFG.ships.skiffSpeed, merchant: CFG.ships.merchantSpeed,
+                     passenger: CFG.ships.passengerSpeed, ghostShip: CFG.ships.ghostShipSpeed };
+    const sizes = { skiff: 10, merchant: 18, passenger: 20, ghostShip: 16 };
+
     const ship = {
-        type, // 'skiff' or 'merchant'
+        type, // 'skiff', 'merchant', 'passenger', 'ghostShip'
         x, y,
         angle: targetAngle,
-        speed: type === 'skiff' ? CFG.ships.skiffSpeed : CFG.ships.merchantSpeed,
+        speed: speeds[type] || CFG.ships.merchantSpeed,
         guided: false,
-        guidedTimer: 0,    // how long under beam
-        driftTimer: 0,     // time since last beam contact
-        progress: 0,       // 0-1 journey to harbor (merchants)
+        guidedTimer: 0,
+        driftTimer: 0,
+        progress: 0,
         health: 1.0,
-        lanternBright: 1.0,
-        hornTimer: type === 'merchant' ? 5 + Math.random() * 5 : 3 + Math.random() * 4,
+        lanternBright: type === 'ghostShip' ? 0.15 : 1.0,
+        hornTimer: type === 'skiff' ? 3 + Math.random() * 4 : 5 + Math.random() * 5,
         sinking: false,
         sinkTimer: 0,
         alive: true,
         saved: false,
         bobPhase: Math.random() * Math.PI * 2,
-        size: type === 'merchant' ? 18 : 10,
+        size: sizes[type] || 14,
+        revealed: type !== 'ghostShip', // ghost ships start unrevealed
+        revealProgress: type === 'ghostShip' ? 0 : 1,
     };
 
-    // Merchants have a target point (harbor)
-    if (type === 'merchant') {
+    // Heavy ships have a target point (harbor)
+    if (type !== 'skiff') {
         ship.targetX = lighthouse.x + (Math.random() - 0.5) * 80;
         ship.targetY = lighthouse.y + 10;
     }
@@ -643,15 +1109,38 @@ function updateShips(dt) {
         const illumination = beam.isPointIlluminated(s.x, s.y);
         s.bobPhase += dt * 2;
 
+        // Ghost ship reveal logic: looks normal at range, revealed empty up close
+        if (s.type === 'ghostShip') {
+            const distToLighthouse = Math.sqrt((s.x - lighthouse.x) ** 2 + (s.y - lighthouse.y) ** 2);
+            const revealThreshold = beam.getLength() * CFG.ships.ghostShipRevealDist;
+            if (illumination > 0.3 && distToLighthouse < revealThreshold) {
+                s.revealProgress = Math.min(1, s.revealProgress + dt * 1.5);
+                if (s.revealProgress > 0.5 && !s.revealed) {
+                    s.revealed = true;
+                    playSound('repel'); // unsettling reveal sound
+                }
+            }
+            // Ghost ships drift aimlessly, never reach harbor
+            s.angle += Math.sin(time * 0.3 + s.bobPhase) * 0.15 * dt;
+            s.x += Math.cos(s.angle) * s.speed * dt;
+            s.y += Math.sin(s.angle) * s.speed * dt;
+            // Ghost ship lantern flickers eerily
+            s.lanternBright = 0.05 + Math.sin(time * 4 + s.bobPhase) * 0.05;
+            if (s.x < -80 || s.x > W + 80 || s.y > H + 80 || s.y < -80) s.alive = false;
+            continue;
+        }
+
+        // Normal ship logic
+        const isHeavy = s.type === 'merchant' || s.type === 'passenger';
+
         if (illumination > 0.1) {
             s.guided = true;
             s.guidedTimer += dt;
             s.driftTimer = 0;
             s.lanternBright = Math.min(1, s.lanternBright + dt * 2);
 
-            if (s.type === 'merchant') {
+            if (isHeavy) {
                 s.progress += CFG.ships.merchantGuideRate * dt * illumination * 3;
-                // Steer toward harbor
                 const dx = s.targetX - s.x;
                 const dy = s.targetY - s.y;
                 const targetA = Math.atan2(dy, dx);
@@ -678,19 +1167,24 @@ function updateShips(dt) {
             }
         } else {
             s.driftTimer += dt;
-            if (s.type === 'merchant') {
+            if (isHeavy) {
                 s.progress += CFG.ships.merchantDriftRate * dt;
                 s.progress = Math.max(0, s.progress);
-                // Drift off course
                 s.angle += (Math.random() - 0.5) * 0.3 * dt;
             } else {
-                // Skiff drifts after a while
                 if (s.driftTimer > CFG.ships.skiffDriftTime) {
                     s.guidedTimer = 0;
                     s.angle += (Math.random() - 0.5) * 0.4 * dt;
                 }
             }
             s.lanternBright = Math.max(0.2, s.lanternBright - dt * 0.5);
+        }
+
+        // Storm event pushes ships off course
+        if (activeEvent === 'storm') {
+            if (Math.random() < 0.02) {
+                s.angle += (Math.random() - 0.5) * 0.8;
+            }
         }
 
         // Move
@@ -700,21 +1194,28 @@ function updateShips(dt) {
         // Horn/bell timer
         s.hornTimer -= dt;
         if (s.hornTimer <= 0) {
-            s.hornTimer = s.type === 'merchant' ? 6 + Math.random() * 4 : 4 + Math.random() * 3;
-            if (s.type === 'merchant') playSound('horn');
-            else playSound('bell');
+            if (s.type === 'skiff') {
+                s.hornTimer = 4 + Math.random() * 3;
+                playSound('bell');
+            } else if (s.type === 'passenger') {
+                s.hornTimer = 5 + Math.random() * 4;
+                playSound('whistle');
+            } else {
+                s.hornTimer = 6 + Math.random() * 4;
+                playSound('horn');
+            }
         }
 
-        // Check if reached harbor (near lighthouse base)
+        // Check if reached harbor
         const distToHarbor = Math.sqrt((s.x - lighthouse.x) ** 2 + (s.y - lighthouse.y) ** 2);
         if (distToHarbor < 50 && s.y > lighthouse.y - 30) {
             s.saved = true;
             s.alive = false;
             nightStats.saved++;
             if (s.type === 'merchant') nightStats.merchantsSaved++;
+            if (s.type === 'passenger') nightStats.passengersSaved++;
             harborGlow += 0.15;
             playSound('arrive');
-            // Celebration particles
             for (let i = 0; i < 8; i++) {
                 spawnParticle(s.x, s.y, {
                     speed: 20 + Math.random() * 40,
@@ -725,11 +1226,12 @@ function updateShips(dt) {
             }
         }
 
-        // Check if out of bounds (lost)
+        // Out of bounds = lost
         if (s.x < -60 || s.x > W + 60 || s.y > H + 60) {
             if (!s.saved) {
                 s.alive = false;
                 nightStats.lost++;
+                if (s.type === 'passenger') nightStats.passengersLost++;
                 playSound('sink');
             }
         }
@@ -739,6 +1241,7 @@ function updateShips(dt) {
             s.sinking = true;
             s.speed = 0;
             nightStats.lost++;
+            if (s.type === 'passenger') nightStats.passengersLost++;
             playSound('sink');
         }
     }
@@ -757,9 +1260,40 @@ function renderShips() {
         ctx.rotate(s.angle + Math.sin(s.bobPhase * 0.7) * 0.05);
         ctx.globalAlpha = s.sinking ? Math.max(0, 1 - s.sinkTimer / 3) : 1;
 
-        if (s.type === 'merchant') {
-            // Hull
-            ctx.fillStyle = `rgba(80,70,55,${vis})`;
+        if (s.type === 'ghostShip') {
+            // Ghost ship: looks like a merchant at range, but eerie up close
+            const ghostAlpha = vis * (s.revealed ? 0.5 : 0.9);
+            ctx.fillStyle = `rgba(${s.revealed ? '50,50,60' : '80,70,55'},${ghostAlpha})`;
+            ctx.beginPath();
+            ctx.moveTo(-s.size, 0);
+            ctx.lineTo(-s.size * 0.8, s.size * 0.5);
+            ctx.lineTo(s.size * 0.8, s.size * 0.5);
+            ctx.lineTo(s.size, 0);
+            ctx.lineTo(s.size * 0.7, -s.size * 0.3);
+            ctx.lineTo(-s.size * 0.7, -s.size * 0.3);
+            ctx.closePath();
+            ctx.fill();
+            // Broken mast
+            ctx.strokeStyle = `rgba(70,65,55,${ghostAlpha})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, -s.size * 0.3);
+            ctx.lineTo(s.revealed ? 3 : 0, -s.size * (s.revealed ? 0.7 : 1.2));
+            ctx.stroke();
+            // Tattered sail if revealed
+            if (s.revealed && ill > 0.3) {
+                ctx.fillStyle = `rgba(90,85,75,${vis * 0.3})`;
+                ctx.beginPath();
+                ctx.moveTo(2, -s.size * 0.65);
+                ctx.lineTo(s.size * 0.4, -s.size * 0.4);
+                ctx.lineTo(1, -s.size * 0.35);
+                ctx.closePath();
+                ctx.fill();
+            }
+        } else if (s.type === 'merchant' || s.type === 'passenger') {
+            // Hull - passengers have a slightly warmer tone
+            const hullColor = s.type === 'passenger' ? `rgba(85,65,50,${vis})` : `rgba(80,70,55,${vis})`;
+            ctx.fillStyle = hullColor;
             ctx.beginPath();
             ctx.moveTo(-s.size, 0);
             ctx.lineTo(-s.size * 0.8, s.size * 0.5);
@@ -784,6 +1318,15 @@ function renderShips() {
             ctx.lineTo(0, -s.size * 0.4);
             ctx.closePath();
             ctx.fill();
+            // Passenger vessel: extra cabin/portholes visible up close
+            if (s.type === 'passenger' && ill > 0.3) {
+                ctx.fillStyle = `rgba(255,200,100,${vis * 0.3})`;
+                for (let p = -2; p <= 2; p++) {
+                    ctx.beginPath();
+                    ctx.arc(p * s.size * 0.2, -s.size * 0.1, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
         } else {
             // Skiff: small boat
             ctx.fillStyle = `rgba(90,80,60,${vis})`;
@@ -794,25 +1337,31 @@ function renderShips() {
             ctx.fillRect(-1, -s.size * 0.5, 2, s.size * 0.4);
         }
 
-        // Lantern
+        // Lantern (ghost ships have dim/eerie lantern)
         const lanternGlow = s.lanternBright * (0.8 + Math.sin(time * 3 + s.bobPhase) * 0.2);
-        ctx.fillStyle = `rgba(255,170,50,${lanternGlow * vis})`;
+        const lanternColor = s.type === 'ghostShip' && s.revealed
+            ? `rgba(100,150,180,${lanternGlow * vis * 0.5})`
+            : `rgba(255,170,50,${lanternGlow * vis})`;
+        const isHeavy = s.type !== 'skiff';
+        ctx.fillStyle = lanternColor;
         ctx.beginPath();
-        ctx.arc(0, -s.size * (s.type === 'merchant' ? 0.3 : 0.5), 2 + lanternGlow, 0, Math.PI * 2);
+        ctx.arc(0, -s.size * (isHeavy ? 0.3 : 0.5), 2 + lanternGlow, 0, Math.PI * 2);
         ctx.fill();
         // Lantern glow halo
-        ctx.fillStyle = `rgba(255,170,50,${lanternGlow * vis * 0.15})`;
+        ctx.fillStyle = s.type === 'ghostShip' && s.revealed
+            ? `rgba(100,150,180,${lanternGlow * vis * 0.05})`
+            : `rgba(255,170,50,${lanternGlow * vis * 0.15})`;
         ctx.beginPath();
-        ctx.arc(0, -s.size * (s.type === 'merchant' ? 0.3 : 0.5), 8 + lanternGlow * 4, 0, Math.PI * 2);
+        ctx.arc(0, -s.size * (isHeavy ? 0.3 : 0.5), 8 + lanternGlow * 4, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
 
-        // Distress indicator (when drifting too long)
-        if (s.driftTimer > 3 && !s.sinking && s.type === 'merchant') {
+        // Distress indicator (when drifting too long, for heavy ships)
+        if (s.driftTimer > 3 && !s.sinking && (s.type === 'merchant' || s.type === 'passenger')) {
             const blink = Math.sin(time * 8) > 0;
             if (blink) {
-                ctx.fillStyle = `rgba(255,80,80,0.6)`;
+                ctx.fillStyle = s.type === 'passenger' ? 'rgba(255,120,60,0.7)' : 'rgba(255,80,80,0.6)';
                 ctx.beginPath();
                 ctx.arc(s.x, s.y - 25 + bob, 3, 0, Math.PI * 2);
                 ctx.fill();
@@ -825,104 +1374,371 @@ function renderShips() {
 let creatures = [];
 
 function spawnCreature(type) {
-    const angle = -Math.PI * (0.1 + Math.random() * 0.8); // upper semicircle
+    const angle = -Math.PI * (0.1 + Math.random() * 0.8);
     const dist = Math.max(W, H) * 0.6 + Math.random() * 200;
     const x = lighthouse.x + Math.cos(angle) * dist;
     const y = lighthouse.y + Math.sin(angle) * dist;
+
+    const sizes = { lurker: 12 + Math.random() * 6, flinch: 8 + Math.random() * 4,
+                    mimic: 10, abyssal: CFG.creatures.abyssalSize, shade: 10 + Math.random() * 4 };
+    const speeds = { lurker: CFG.creatures.lurkerSpeed, flinch: CFG.creatures.flinchSpeed,
+                     mimic: CFG.creatures.mimicSpeed, abyssal: CFG.creatures.abyssalSpeed,
+                     shade: CFG.creatures.shadeSpeed };
 
     creatures.push({
         type,
         x, y,
         vx: 0, vy: 0,
-        speed: CFG.creatures.lurkerSpeed,
+        speed: speeds[type] || 30,
         fleeing: false,
         fleeTimer: 0,
         alive: true,
         phase: Math.random() * Math.PI * 2,
-        size: 12 + Math.random() * 6,
+        size: sizes[type] || 12,
         targetShip: null,
+        // Flinch-specific
+        frozen: false,
+        frozenTimer: 0,
+        bolting: false,
+        boltTimer: 0,
+        boltAngle: 0,
+        // Mimic-specific
+        disguised: type === 'mimic', // looks like a skiff until close
+        mimicRevealed: false,
+        // Abyssal-specific
+        abyssalSoundTimer: type === 'abyssal' ? 3 : 0,
+        // Shade-specific
+        reachedLighthouse: false,
     });
 }
 
 function updateCreatures(dt) {
+    const aggressionMult = activeEvent === 'redTide' ? 1.5 : 1.0;
+
     for (const c of creatures) {
         c.phase += dt * 3;
         const ill = beam.isPointIlluminated(c.x, c.y);
+        const distToLighthouse = Math.sqrt((c.x - lighthouse.x) ** 2 + (c.y - lighthouse.y) ** 2);
 
+        // ── SHADE: targets lighthouse, ignores ships ──
+        if (c.type === 'shade') {
+            if (ill > 0.2 && !c.fleeing) {
+                c.fleeing = true;
+                c.fleeTimer = 1.5;
+                const awayAngle = Math.atan2(c.y - lighthouse.y, c.x - lighthouse.x);
+                c.vx = Math.cos(awayAngle) * 60;
+                c.vy = Math.sin(awayAngle) * 60;
+                playSound('repel');
+                for (let i = 0; i < 4; i++) {
+                    spawnParticle(c.x, c.y, {
+                        speed: 20 + Math.random() * 30,
+                        angle: awayAngle + (Math.random() - 0.5) * 1,
+                        color: '#6633aa',
+                        life: 0.4, size: 2,
+                    });
+                }
+            }
+            if (c.fleeing) {
+                c.fleeTimer -= dt;
+                c.x += c.vx * dt; c.y += c.vy * dt;
+                c.vx *= 0.96; c.vy *= 0.96;
+                if (c.fleeTimer <= 0) c.fleeing = false;
+            } else {
+                // Move toward lighthouse base
+                const dx = lighthouse.x - c.x;
+                const dy = lighthouse.y - c.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 0) {
+                    c.x += (dx / dist) * c.speed * aggressionMult * dt;
+                    c.y += (dy / dist) * c.speed * aggressionMult * dt;
+                }
+                // Shade undulation - more ghostly
+                c.x += Math.sin(c.phase * 1.3) * 12 * dt;
+                c.y += Math.cos(c.phase * 0.9) * 8 * dt;
+            }
+            // Reached lighthouse!
+            if (distToLighthouse < 40 && !c.reachedLighthouse) {
+                c.reachedLighthouse = true;
+                lighthouseDamage = 0.4; // beam weakens
+                lighthouseDamageTimer = CFG.creatures.shadeDamageTime;
+                c.alive = false;
+                playSound('shadeHit');
+                for (let i = 0; i < 10; i++) {
+                    spawnParticle(lighthouse.x, lighthouse.y, {
+                        speed: 15 + Math.random() * 30,
+                        color: '#442266', life: 0.6, size: 3,
+                    });
+                }
+            }
+            if (c.x < -200 || c.x > W + 200 || c.y < -200 || c.y > H + 200) c.alive = false;
+            continue;
+        }
+
+        // ── ABYSSAL: huge, only overdrive repels ──
+        if (c.type === 'abyssal') {
+            c.abyssalSoundTimer -= dt;
+            if (c.abyssalSoundTimer <= 0) {
+                c.abyssalSoundTimer = 5 + Math.random() * 4;
+                playSound('abyssal');
+            }
+            // Normal beam does NOT repel abyssals
+            if (beam.overdriveActive && ill > 0.3 && !c.fleeing) {
+                c.fleeing = true;
+                c.fleeTimer = 3.0;
+                const awayAngle = Math.atan2(c.y - lighthouse.y, c.x - lighthouse.x);
+                c.vx = Math.cos(awayAngle) * CFG.creatures.abyssalPushback;
+                c.vy = Math.sin(awayAngle) * CFG.creatures.abyssalPushback;
+                playSound('overdrive');
+                nightStats.creaturesRepelled++;
+                for (let i = 0; i < 8; i++) {
+                    spawnParticle(c.x, c.y, {
+                        speed: 40 + Math.random() * 50,
+                        angle: awayAngle + (Math.random() - 0.5) * 0.8,
+                        color: '#aa66dd', life: 0.5, size: 3,
+                    });
+                }
+            }
+            if (c.fleeing) {
+                c.fleeTimer -= dt;
+                c.x += c.vx * dt; c.y += c.vy * dt;
+                c.vx *= 0.97; c.vy *= 0.97;
+                if (c.fleeTimer <= 0) c.fleeing = false;
+            } else {
+                // Move toward nearest ship or lighthouse
+                let tx = lighthouse.x, ty = lighthouse.y;
+                let nearestDist = Infinity;
+                for (const s of ships) {
+                    if (s.sinking || s.type === 'ghostShip') continue;
+                    const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
+                    if (d < nearestDist) { nearestDist = d; tx = s.x; ty = s.y; }
+                }
+                const dx = tx - c.x, dy = ty - c.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 0) {
+                    c.x += (dx / dist) * c.speed * aggressionMult * dt;
+                    c.y += (dy / dist) * c.speed * aggressionMult * dt;
+                }
+                // Heavy undulation
+                c.x += Math.sin(c.phase * 0.5) * 15 * dt;
+                c.y += Math.cos(c.phase * 0.3) * 10 * dt;
+            }
+            // Damage ships on contact
+            for (const s of ships) {
+                if (s.sinking || s.type === 'ghostShip') continue;
+                const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
+                if (d < c.size + s.size) {
+                    s.health -= dt * 1.0; // abyssals hit harder
+                    s.angle += (Math.random() - 0.5) * 3 * dt;
+                }
+            }
+            if (c.x < -300 || c.x > W + 300 || c.y < -300 || c.y > H + 300) c.alive = false;
+            continue;
+        }
+
+        // ── FLINCH: freezes when illuminated, bolts when beam leaves ──
+        if (c.type === 'flinch') {
+            if (c.bolting) {
+                c.boltTimer -= dt;
+                c.x += Math.cos(c.boltAngle) * CFG.creatures.flinchBoltSpeed * dt;
+                c.y += Math.sin(c.boltAngle) * CFG.creatures.flinchBoltSpeed * dt;
+                if (c.boltTimer <= 0) c.bolting = false;
+            } else if (c.frozen) {
+                // Frozen in beam - don't move
+                if (ill < 0.1) {
+                    // Beam left! Bolt toward nearest ship
+                    c.frozen = false;
+                    c.bolting = true;
+                    c.boltTimer = CFG.creatures.flinchBoltDuration;
+                    let tx = lighthouse.x, ty = lighthouse.y;
+                    for (const s of ships) {
+                        if (s.sinking || s.type === 'ghostShip') continue;
+                        const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
+                        const d2 = Math.sqrt((tx - c.x) ** 2 + (ty - c.y) ** 2);
+                        if (d < d2) { tx = s.x; ty = s.y; }
+                    }
+                    c.boltAngle = Math.atan2(ty - c.y, tx - c.x);
+                    playSound('flinch');
+                }
+                c.frozenTimer -= dt;
+                if (c.frozenTimer <= 0) {
+                    c.frozen = false;
+                    c.bolting = true;
+                    c.boltTimer = CFG.creatures.flinchBoltDuration;
+                    c.boltAngle = Math.atan2(lighthouse.y - c.y, lighthouse.x - c.x);
+                }
+            } else {
+                // Darting toward ships
+                if (ill > 0.2) {
+                    c.frozen = true;
+                    c.frozenTimer = CFG.creatures.flinchFreezeTime;
+                    playSound('repel');
+                    nightStats.creaturesRepelled++;
+                } else {
+                    // Move erratically toward ships
+                    let nearestDist = Infinity;
+                    c.targetShip = null;
+                    for (const s of ships) {
+                        if (s.sinking || s.type === 'ghostShip') continue;
+                        const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
+                        if (d < nearestDist) { nearestDist = d; c.targetShip = s; }
+                    }
+                    if (c.targetShip) {
+                        const dx = c.targetShip.x - c.x, dy = c.targetShip.y - c.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > 0) {
+                            c.x += (dx / dist) * c.speed * aggressionMult * dt;
+                            c.y += (dy / dist) * c.speed * aggressionMult * dt;
+                        }
+                        if (nearestDist < c.size + c.targetShip.size) {
+                            c.targetShip.health -= dt * 0.4;
+                            c.targetShip.angle += (Math.random() - 0.5) * 2 * dt;
+                        }
+                    }
+                    // Erratic movement
+                    c.x += Math.sin(c.phase * 2) * 20 * dt;
+                    c.y += Math.cos(c.phase * 1.5) * 15 * dt;
+                }
+            }
+            if (c.x < -200 || c.x > W + 200 || c.y < -200 || c.y > H + 200) c.alive = false;
+            continue;
+        }
+
+        // ── MIMIC: disguised as skiff until close illumination ──
+        if (c.type === 'mimic') {
+            if (ill > 0.3 && distToLighthouse < beam.getLength() * CFG.creatures.mimicRevealDist && c.disguised) {
+                c.disguised = false;
+                c.mimicRevealed = true;
+                playSound('repel');
+                for (let i = 0; i < 6; i++) {
+                    spawnParticle(c.x, c.y, {
+                        speed: 25 + Math.random() * 35,
+                        color: '#8844aa', life: 0.4, size: 2,
+                    });
+                }
+            }
+            if (c.disguised) {
+                // Move like a skiff (toward harbor area but not directly)
+                const dx = lighthouse.x + (Math.sin(c.phase * 0.2) * 100) - c.x;
+                const dy = lighthouse.y - 50 - c.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 0) {
+                    c.x += (dx / dist) * c.speed * 0.7 * dt;
+                    c.y += (dy / dist) * c.speed * 0.7 * dt;
+                }
+                c.x += Math.sin(c.phase) * 5 * dt;
+            } else {
+                // Revealed: behaves like a lurker
+                if (ill > 0.2 && !c.fleeing) {
+                    c.fleeing = true;
+                    c.fleeTimer = CFG.creatures.lurkerFleeDuration;
+                    const awayAngle = Math.atan2(c.y - lighthouse.y, c.x - lighthouse.x);
+                    c.vx = Math.cos(awayAngle) * CFG.creatures.lurkerFleeSpeed;
+                    c.vy = Math.sin(awayAngle) * CFG.creatures.lurkerFleeSpeed;
+                    nightStats.creaturesRepelled++;
+                }
+                if (c.fleeing) {
+                    c.fleeTimer -= dt;
+                    c.x += c.vx * dt; c.y += c.vy * dt;
+                    c.vx *= 0.97; c.vy *= 0.97;
+                    if (c.fleeTimer <= 0) c.fleeing = false;
+                } else {
+                    let nearestDist = Infinity;
+                    for (const s of ships) {
+                        if (s.sinking || s.type === 'ghostShip') continue;
+                        const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
+                        if (d < nearestDist) { nearestDist = d; c.targetShip = s; }
+                    }
+                    if (c.targetShip) {
+                        const dx = c.targetShip.x - c.x, dy = c.targetShip.y - c.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist > 0) {
+                            c.x += (dx / dist) * c.speed * aggressionMult * dt;
+                            c.y += (dy / dist) * c.speed * aggressionMult * dt;
+                        }
+                        if (nearestDist < c.size + c.targetShip.size) {
+                            c.targetShip.health -= dt * 0.4;
+                        }
+                    }
+                    c.x += Math.sin(c.phase) * 8 * dt;
+                    c.y += Math.cos(c.phase * 0.7) * 5 * dt;
+                }
+            }
+            if (c.x < -200 || c.x > W + 200 || c.y < -200 || c.y > H + 200) c.alive = false;
+            continue;
+        }
+
+        // ── LURKER: standard behavior ──
         if (ill > 0.2 && !c.fleeing) {
-            // Flee from beam
             c.fleeing = true;
             c.fleeTimer = CFG.creatures.lurkerFleeDuration;
             const awayAngle = Math.atan2(c.y - lighthouse.y, c.x - lighthouse.x);
             c.vx = Math.cos(awayAngle) * CFG.creatures.lurkerFleeSpeed;
             c.vy = Math.sin(awayAngle) * CFG.creatures.lurkerFleeSpeed;
             playSound('repel');
-            // Repel particles
+            nightStats.creaturesRepelled++;
             for (let i = 0; i < 5; i++) {
                 spawnParticle(c.x, c.y, {
                     speed: 30 + Math.random() * 40,
                     angle: awayAngle + (Math.random() - 0.5) * 1,
-                    color: '#8844aa',
-                    life: 0.3,
-                    size: 2,
+                    color: '#8844aa', life: 0.3, size: 2,
                 });
             }
         }
 
         if (c.fleeing) {
             c.fleeTimer -= dt;
-            c.x += c.vx * dt;
-            c.y += c.vy * dt;
-            c.vx *= 0.97;
-            c.vy *= 0.97;
-            if (c.fleeTimer <= 0) {
-                c.fleeing = false;
-            }
+            c.x += c.vx * dt; c.y += c.vy * dt;
+            c.vx *= 0.97; c.vy *= 0.97;
+            if (c.fleeTimer <= 0) c.fleeing = false;
         } else {
-            // Find nearest ship to target
+            // Attracted to ghost ships
+            let targetX = null, targetY = null;
             let nearestDist = Infinity;
-            c.targetShip = null;
+
+            // Check for ghost ships first (lure effect)
             for (const s of ships) {
-                if (s.sinking) continue;
-                const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
-                if (d < nearestDist) { nearestDist = d; c.targetShip = s; }
+                if (s.type === 'ghostShip') {
+                    const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
+                    if (d < CFG.ships.ghostShipLureRadius && d < nearestDist) {
+                        nearestDist = d; targetX = s.x; targetY = s.y;
+                    }
+                }
             }
 
-            if (c.targetShip) {
-                const dx = c.targetShip.x - c.x;
-                const dy = c.targetShip.y - c.y;
+            // Otherwise find nearest ship
+            if (!targetX) {
+                for (const s of ships) {
+                    if (s.sinking || s.type === 'ghostShip') continue;
+                    const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
+                    if (d < nearestDist) { nearestDist = d; targetX = s.x; targetY = s.y; c.targetShip = s; }
+                }
+            }
+
+            if (targetX !== null) {
+                const dx = targetX - c.x, dy = targetY - c.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist > 0) {
-                    c.x += (dx / dist) * c.speed * dt;
-                    c.y += (dy / dist) * c.speed * dt;
+                    c.x += (dx / dist) * c.speed * aggressionMult * dt;
+                    c.y += (dy / dist) * c.speed * aggressionMult * dt;
                 }
-
-                // Damage ship on contact
-                if (dist < c.size + c.targetShip.size) {
+                // Damage on contact with actual ships
+                if (c.targetShip && nearestDist < c.size + c.targetShip.size) {
                     c.targetShip.health -= dt * 0.5;
-                    // Push ship off course
                     c.targetShip.angle += (Math.random() - 0.5) * 2 * dt;
                 }
             } else {
-                // Drift toward lighthouse slowly
-                const dx = lighthouse.x - c.x;
-                const dy = lighthouse.y - c.y;
+                const dx = lighthouse.x - c.x, dy = lighthouse.y - c.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist > 0) {
                     c.x += (dx / dist) * c.speed * 0.5 * dt;
                     c.y += (dy / dist) * c.speed * 0.5 * dt;
                 }
             }
-
-            // Organic undulation
             c.x += Math.sin(c.phase) * 8 * dt;
             c.y += Math.cos(c.phase * 0.7) * 5 * dt;
         }
 
-        // Out of bounds
-        if (c.x < -200 || c.x > W + 200 || c.y < -200 || c.y > H + 200) {
-            c.alive = false;
-        }
+        if (c.x < -200 || c.x > W + 200 || c.y < -200 || c.y > H + 200) c.alive = false;
     }
 
     creatures = creatures.filter(c => c.alive);
@@ -931,15 +1747,140 @@ function updateCreatures(dt) {
 function renderCreatures() {
     for (const c of creatures) {
         const ill = beam.isPointIlluminated(c.x, c.y);
-        const vis = Math.max(0.03, ill * 0.7);
         const undulate = Math.sin(c.phase) * 3;
+
+        // ── MIMIC (disguised): render as fake skiff ──
+        if (c.type === 'mimic' && c.disguised) {
+            const vis = Math.max(0.05, ill * 0.7 + 0.15);
+            ctx.save();
+            ctx.translate(c.x, c.y + Math.sin(c.phase * 0.8) * 2);
+            ctx.globalAlpha = vis;
+            // Looks like a skiff
+            ctx.fillStyle = `rgba(90,80,60,${vis})`;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 10, 4, 0, 0, Math.PI);
+            ctx.fill();
+            ctx.fillStyle = `rgba(70,60,45,${vis})`;
+            ctx.fillRect(-1, -5, 2, 4);
+            // Fake lantern - slightly off color if you look closely
+            const fakeLantern = 0.6 + Math.sin(time * 2.5 + c.phase) * 0.2;
+            ctx.fillStyle = `rgba(240,160,40,${fakeLantern * vis})`;
+            ctx.beginPath();
+            ctx.arc(0, -5, 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            continue;
+        }
+
+        const vis = Math.max(0.03, ill * 0.7);
 
         ctx.save();
         ctx.translate(c.x, c.y + undulate);
-        ctx.globalAlpha = vis;
 
-        // Body: dark organic shape
-        ctx.fillStyle = CFG.colors.creature;
+        // ── ABYSSAL: huge dark mass ──
+        if (c.type === 'abyssal') {
+            ctx.globalAlpha = Math.max(0.06, ill * 0.5); // always slightly visible as silhouette
+            ctx.fillStyle = '#0c0515';
+            ctx.beginPath();
+            const segs = 12;
+            for (let i = 0; i <= segs; i++) {
+                const t = i / segs;
+                const a = t * Math.PI * 2;
+                const r = c.size * (0.85 + Math.sin(a * 2 + c.phase * 0.5) * 0.15);
+                const px = Math.cos(a) * r;
+                const py = Math.sin(a) * r * 0.6; // slightly flattened
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+            // Faint inner glow
+            if (ill > 0.2) {
+                ctx.fillStyle = `rgba(100,40,120,${ill * 0.15})`;
+                ctx.beginPath();
+                ctx.arc(0, 0, c.size * 0.4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            // Multiple dim eyes
+            if (ill > 0.3) {
+                ctx.fillStyle = CFG.colors.creatureEye;
+                ctx.globalAlpha = ill * 0.6;
+                for (let e = 0; e < 4; e++) {
+                    const ex = (e - 1.5) * 8;
+                    const ey = -5 + Math.sin(c.phase + e) * 2;
+                    ctx.beginPath();
+                    ctx.arc(ex, ey, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            ctx.restore();
+            continue;
+        }
+
+        // ── SHADE: ghostly, translucent ──
+        if (c.type === 'shade') {
+            ctx.globalAlpha = Math.max(0.04, ill * 0.5);
+            // Shade is more vertical, wispy
+            ctx.fillStyle = '#1a0825';
+            ctx.beginPath();
+            const segs = 10;
+            for (let i = 0; i <= segs; i++) {
+                const t = i / segs;
+                const a = t * Math.PI * 2;
+                const r = c.size * (0.6 + Math.sin(a * 2 + c.phase * 1.5) * 0.4);
+                const px = Math.cos(a) * r * 0.7;
+                const py = Math.sin(a) * r * 1.3; // tall and thin
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+            // Faint face
+            if (ill > 0.25) {
+                ctx.fillStyle = `rgba(130,80,160,${ill * 0.4})`;
+                ctx.beginPath();
+                ctx.arc(-2, -3, 1.5, 0, Math.PI * 2);
+                ctx.arc(2, -3, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+            continue;
+        }
+
+        // ── FLINCH: small, angular, twitchy ──
+        if (c.type === 'flinch') {
+            ctx.globalAlpha = c.frozen ? Math.max(0.15, ill * 0.8) : vis;
+            ctx.fillStyle = c.frozen ? '#1a0a22' : CFG.colors.creature;
+            ctx.beginPath();
+            // Angular, spiky shape
+            const segs = 6;
+            for (let i = 0; i <= segs; i++) {
+                const t = i / segs;
+                const a = t * Math.PI * 2;
+                const spike = i % 2 === 0 ? 1.3 : 0.7;
+                const r = c.size * spike * (c.frozen ? 0.9 : (0.8 + Math.sin(c.phase * 4 + a * 2) * 0.3));
+                const px = Math.cos(a) * r;
+                const py = Math.sin(a) * r;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+            if (ill > 0.3) {
+                ctx.fillStyle = '#cc4466';
+                ctx.globalAlpha = ill * 0.8;
+                ctx.beginPath();
+                ctx.arc(-2, -1, 1.5, 0, Math.PI * 2);
+                ctx.arc(2, -1, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+            continue;
+        }
+
+        // ── LURKER + revealed MIMIC: standard organic shape ──
+        ctx.globalAlpha = vis;
+        ctx.fillStyle = c.mimicRevealed ? '#160a20' : CFG.colors.creature;
         ctx.beginPath();
         const segments = 8;
         for (let i = 0; i <= segments; i++) {
@@ -954,9 +1895,8 @@ function renderCreatures() {
         ctx.closePath();
         ctx.fill();
 
-        // Eyes (only visible when illuminated)
         if (ill > 0.3) {
-            ctx.fillStyle = CFG.colors.creatureEye;
+            ctx.fillStyle = c.mimicRevealed ? '#aa3366' : CFG.colors.creatureEye;
             ctx.globalAlpha = ill * 0.8;
             ctx.beginPath();
             ctx.arc(-3, -2, 2, 0, Math.PI * 2);
@@ -969,12 +1909,12 @@ function renderCreatures() {
 }
 
 // ── Night Stats ──
-let nightStats = { saved: 0, lost: 0, merchantsSaved: 0, creaturesRepelled: 0 };
+let nightStats = { saved: 0, lost: 0, merchantsSaved: 0, passengersSaved: 0, passengersLost: 0, creaturesRepelled: 0 };
 let harborGlow = 0.1;
 let wreckage = [];
 
 function resetNightStats() {
-    nightStats = { saved: 0, lost: 0, merchantsSaved: 0, creaturesRepelled: 0 };
+    nightStats = { saved: 0, lost: 0, merchantsSaved: 0, passengersSaved: 0, passengersLost: 0, creaturesRepelled: 0 };
 }
 
 // ── Spawn Manager ──
@@ -983,10 +1923,16 @@ let spawnQueue = [];
 
 function buildSpawnQueue(nightCfg) {
     const q = [];
-    for (let i = 0; i < nightCfg.skiffs; i++) q.push({ type: 'skiff', entity: 'ship' });
-    for (let i = 0; i < nightCfg.merchants; i++) q.push({ type: 'merchant', entity: 'ship' });
-    for (let i = 0; i < nightCfg.lurkers; i++) q.push({ type: 'lurker', entity: 'creature' });
-    // Shuffle
+    for (let i = 0; i < (nightCfg.skiffs || 0); i++) q.push({ type: 'skiff', entity: 'ship' });
+    for (let i = 0; i < (nightCfg.merchants || 0); i++) q.push({ type: 'merchant', entity: 'ship' });
+    for (let i = 0; i < (nightCfg.passengers || 0); i++) q.push({ type: 'passenger', entity: 'ship' });
+    for (let i = 0; i < (nightCfg.ghostShips || 0); i++) q.push({ type: 'ghostShip', entity: 'ship' });
+    for (let i = 0; i < (nightCfg.lurkers || 0); i++) q.push({ type: 'lurker', entity: 'creature' });
+    for (let i = 0; i < (nightCfg.flinches || 0); i++) q.push({ type: 'flinch', entity: 'creature' });
+    for (let i = 0; i < (nightCfg.mimics || 0); i++) q.push({ type: 'mimic', entity: 'creature' });
+    for (let i = 0; i < (nightCfg.abyssals || 0); i++) q.push({ type: 'abyssal', entity: 'creature' });
+    for (let i = 0; i < (nightCfg.shades || 0); i++) q.push({ type: 'shade', entity: 'creature' });
+    // Shuffle but keep ghost ships in middle third of night
     for (let i = q.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [q[i], q[j]] = [q[j], q[i]];
@@ -1005,9 +1951,14 @@ function startNight() {
     beam.angularVel = 0;
     harborGlow = 0.1;
     nightTimer = 0;
+    lighthouseDamage = 0;
+    lighthouseDamageTimer = 0;
+    activeEvent = cfg.event || null;
+    activeWhispers = [];
+    finaleTriggered = false;
     resetNightStats();
     spawnQueue = buildSpawnQueue(cfg);
-    spawnTimer = 3; // first spawn after 3 seconds
+    spawnTimer = 3;
     startAmbient();
 }
 
@@ -1243,7 +2194,7 @@ function renderNightIntro() {
 
     ctx.fillStyle = '#aaa8a0';
     ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
-    ctx.fillText(cfg.desc, W / 2, H * 0.5);
+    ctx.fillText(cfg.desc || '', W / 2, H * 0.5);
 
     ctx.globalAlpha = 1;
 
@@ -1316,7 +2267,7 @@ function renderDawn() {
 
         ctx.fillStyle = '#3a3530';
         ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
-        ctx.fillText(`Night ${nightNum + 1}`, W / 2, H * 0.15);
+        ctx.fillText(`Night ${nightNum}`, W / 2, H * 0.15);
 
         const total = nightStats.saved + nightStats.lost;
         let summary;
@@ -1338,6 +2289,29 @@ function renderDawn() {
             ctx.fillText(`${nightStats.lost} met the rocks.`, W / 2, H * 0.28);
         }
 
+        // Journal entry from previous keeper
+        const journalEntry = getJournalEntry(nightNum - 1);
+        if (journalEntry) {
+            ctx.fillStyle = '#4a4538';
+            ctx.font = `italic ${Math.min(13, W * 0.018)}px Georgia, serif`;
+            // Word-wrap the journal entry
+            const maxWidth = W * 0.7;
+            const words = journalEntry.split(' ');
+            let line = '';
+            let journalY = H * 0.35;
+            for (const word of words) {
+                const testLine = line + (line ? ' ' : '') + word;
+                if (ctx.measureText(testLine).width > maxWidth) {
+                    ctx.fillText(line, W / 2, journalY);
+                    line = word;
+                    journalY += 18;
+                } else {
+                    line = testLine;
+                }
+            }
+            if (line) ctx.fillText(line, W / 2, journalY);
+        }
+
         ctx.globalAlpha = 1;
     }
 
@@ -1347,7 +2321,7 @@ function renderDawn() {
         ctx.fillStyle = `rgba(58,53,48,${pa})`;
         ctx.textAlign = 'center';
         ctx.font = `${Math.min(14, W * 0.02)}px Georgia, serif`;
-        const nextText = nightNum < CFG.nights.length - 1 ? 'Click to continue' : 'Click to return';
+        const nextText = nightNum < CFG.nights.length ? 'Click to continue' : 'Click to return';
         ctx.fillText(nextText, W / 2, H * 0.88);
     }
 
@@ -1357,6 +2331,32 @@ function renderDawn() {
 // ── Gameplay Render ──
 function renderGameplay() {
     renderWater();
+
+    // Environmental event overlays
+    if (activeEvent === 'fog') {
+        // Fog: milky overlay on part of the screen
+        const fogGrad = ctx.createRadialGradient(W * 0.3, H * 0.3, 50, W * 0.3, H * 0.3, H * 0.5);
+        fogGrad.addColorStop(0, 'rgba(140,150,160,0.12)');
+        fogGrad.addColorStop(1, 'rgba(140,150,160,0)');
+        ctx.fillStyle = fogGrad;
+        ctx.fillRect(0, 0, W, H);
+    }
+    if (activeEvent === 'redTide') {
+        // Bioluminescent red-green glow on water
+        ctx.fillStyle = 'rgba(60,120,80,0.04)';
+        ctx.fillRect(0, H * 0.35, W, H * 0.65);
+        // Extra plankton particles
+        if (Math.random() < 0.06) {
+            spawnParticle(Math.random() * W, H * 0.4 + Math.random() * H * 0.5, {
+                speed: 2, color: '#55bbaa', life: 1.5, size: 1.2, gravity: 0,
+            });
+        }
+    }
+    if (activeEvent === 'newMoon') {
+        // Extra dark overlay
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillRect(0, 0, W, H);
+    }
 
     // Lightning flash
     if (lightningFlash > 0) {
@@ -1372,21 +2372,79 @@ function renderGameplay() {
     // Beam renders on top of entities but below lighthouse
     lighthouse.x = W / 2;
     lighthouse.y = H * 0.82;
-    beam.render();
+
+    // Lighthouse damage flicker
+    if (lighthouseDamage > 0) {
+        if (Math.random() < 0.3) {
+            // Skip rendering beam occasionally when damaged (flicker)
+        } else {
+            beam.render();
+        }
+    } else {
+        beam.render();
+    }
 
     renderLighthouse();
     renderParticles();
+    renderWhispers();
     renderVignette();
 
-    // Night timer (subtle)
+    // Night timer urgency glow
+    const nightDuration = CFG.nights[nightNum] ? CFG.nights[nightNum].duration || CFG.night.duration : CFG.night.duration;
     if (nightTimer > 0) {
-        const remaining = Math.max(0, CFG.night.duration - nightTimer);
+        const remaining = Math.max(0, nightDuration - nightTimer);
         if (remaining < 20) {
             const urgency = 1 - remaining / 20;
             ctx.fillStyle = `rgba(255,200,100,${urgency * 0.05})`;
             ctx.fillRect(0, 0, W, H);
         }
     }
+
+    // Lighthouse damage indicator
+    if (lighthouseDamage > 0) {
+        ctx.fillStyle = `rgba(80,30,100,${lighthouseDamage * 0.1 * (0.5 + Math.random() * 0.5)})`;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    // Fog horn reveal flash
+    if (fogHornActive > 0) {
+        const pulse = fogHornActive / FOG_HORN_DURATION;
+        const grad = ctx.createRadialGradient(lighthouse.x, lighthouse.y, 10, lighthouse.x, lighthouse.y, Math.max(W, H) * 0.7);
+        grad.addColorStop(0, `rgba(255,248,224,${pulse * 0.08})`);
+        grad.addColorStop(1, 'rgba(255,248,224,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    // Spyglass zoom indicator
+    if (spyglassActive > 0) {
+        ctx.strokeStyle = `rgba(255,204,68,${0.2 * (spyglassActive / SPYGLASS_DURATION)})`;
+        ctx.lineWidth = 1;
+        const sLen = beam.getLength() * 1.5;
+        const sCone = beam.getConeAngle() * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(lighthouse.x, lighthouse.y);
+        ctx.arc(lighthouse.x, lighthouse.y, sLen, beam.angle - sCone, beam.angle + sCone);
+        ctx.closePath();
+        ctx.stroke();
+    }
+
+    // Ability cooldown indicators (subtle, bottom-left)
+    let abilityY = H - 20;
+    ctx.textAlign = 'left';
+    ctx.font = `${Math.min(11, W * 0.015)}px Georgia, serif`;
+    if (campaign.upgrades.includes('fogHorn')) {
+        const ready = fogHornCooldown <= 0;
+        ctx.fillStyle = ready ? 'rgba(255,248,224,0.4)' : 'rgba(255,248,224,0.15)';
+        ctx.fillText(`[F] Horn ${ready ? '\u2022' : Math.ceil(fogHornCooldown) + 's'}`, 10, abilityY);
+        abilityY -= 16;
+    }
+    if (campaign.upgrades.includes('spyglass')) {
+        const ready = spyglassCooldown <= 0;
+        ctx.fillStyle = ready ? 'rgba(255,248,224,0.4)' : 'rgba(255,248,224,0.15)';
+        ctx.fillText(`[G] Glass ${ready ? '\u2022' : Math.ceil(spyglassCooldown) + 's'}`, 10, abilityY);
+    }
+    ctx.textAlign = 'center';
 }
 
 // ── Main Update ──
@@ -1397,6 +2455,34 @@ function updateGameplay(dt) {
     updateCreatures(dt);
     updateParticles(dt);
     updateAmbient(dt);
+    updateWhispers(dt);
+
+    // Ability cooldowns
+    if (fogHornCooldown > 0) fogHornCooldown -= dt;
+    if (spyglassCooldown > 0) spyglassCooldown -= dt;
+    if (fogHornActive > 0) fogHornActive -= dt;
+    if (spyglassActive > 0) spyglassActive -= dt;
+
+    // Fog Horn activation
+    if (input.fogHornKey && fogHornCooldown <= 0 && campaign.upgrades.includes('fogHorn')) {
+        fogHornActive = FOG_HORN_DURATION;
+        fogHornCooldown = FOG_HORN_COOLDOWN;
+        playSound('horn');
+    }
+    // Spyglass activation
+    if (input.spyglassKey && spyglassCooldown <= 0 && campaign.upgrades.includes('spyglass')) {
+        spyglassActive = SPYGLASS_DURATION;
+        spyglassCooldown = SPYGLASS_COOLDOWN;
+    }
+
+    // Lighthouse damage decay
+    if (lighthouseDamageTimer > 0) {
+        lighthouseDamageTimer -= dt;
+        if (lighthouseDamageTimer <= 0) {
+            lighthouseDamage = 0;
+            lighthouseDamageTimer = 0;
+        }
+    }
 
     // Spawn logic
     const cfg = CFG.nights[nightNum];
@@ -1411,18 +2497,51 @@ function updateGameplay(dt) {
         }
     }
 
-    // Night end check: all spawned and all ships resolved
-    if (spawnQueue.length === 0 && ships.length === 0 && nightTimer > 10) {
-        nightNum++;
-        playSound('dawn');
-        changeState(GameState.DAWN, 1.5);
+    const nightDuration = cfg.duration || CFG.night.duration;
+
+    // Night 21 finale: beam fails at 60%
+    if (cfg.finale && nightTimer >= nightDuration * 0.6 && !finaleTriggered) {
+        finaleTriggered = true;
+        state = GameState.FINALE_DARK;
+        stateTimer = 0;
+        // Cut all sound
+        if (ambientNode) {
+            ambientNode.gain.gain.setValueAtTime(0, getAudio().currentTime);
+        }
+        return;
+    }
+
+    // Night end: all spawned and all non-ghost ships resolved
+    const activeShips = ships.filter(s => s.type !== 'ghostShip');
+    if (spawnQueue.length === 0 && activeShips.length === 0 && nightTimer > 10) {
+        endNight();
     }
 
     // Also end if timer runs out
-    if (nightTimer >= CFG.night.duration) {
-        nightNum++;
-        playSound('dawn');
-        changeState(GameState.DAWN, 1.5);
+    if (nightTimer >= nightDuration) {
+        endNight();
+    }
+}
+
+function endNight() {
+    // Record night results
+    campaign.nightResults[nightNum] = {
+        saved: nightStats.saved,
+        lost: nightStats.lost,
+        passengersLost: nightStats.passengersLost,
+    };
+    campaign.totalSaved += nightStats.saved;
+    campaign.totalLost += nightStats.lost;
+
+    nightNum++;
+
+    playSound('dawn');
+    changeState(GameState.DAWN, 1.5);
+
+    if (nightNum >= CFG.nights.length) {
+        clearSave();
+    } else {
+        saveCampaign();
     }
 }
 
@@ -1464,6 +2583,21 @@ function loop(ts) {
         case GameState.NIGHT_INTRO:
             renderNightIntro();
             break;
+        case GameState.UPGRADE:
+            renderUpgrade();
+            break;
+        case GameState.KEEPERS_RECORD:
+            renderKeepersRecord();
+            break;
+        case GameState.FINALE_DARK:
+            renderFinaleDark();
+            break;
+        case GameState.FINALE_CHOICE:
+            renderFinaleChoice();
+            break;
+        case GameState.FINALE_END:
+            renderFinaleEnd();
+            break;
         case GameState.TRANSITION:
             const progress = Math.min(1, stateTimer / transitionDuration);
             // Fade through black
@@ -1501,13 +2635,366 @@ function loop(ts) {
     }
 }
 
+// ── Upgrade Screen ──
+function renderUpgrade() {
+    // Dark background with faint lighthouse
+    ctx.fillStyle = '#0a0e14';
+    ctx.fillRect(0, 0, W, H);
+
+    lighthouse.x = W / 2;
+    lighthouse.y = H * 0.82;
+
+    // Dim lighthouse silhouette
+    ctx.globalAlpha = 0.15;
+    renderLighthouse();
+    ctx.globalAlpha = 1;
+
+    const fadeIn = Math.min(1, stateTimer / 1.0);
+    ctx.globalAlpha = fadeIn;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Header
+    ctx.fillStyle = '#aaa8a0';
+    ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
+    ctx.fillText('Preparations for the coming night', W / 2, H * 0.15);
+
+    ctx.fillStyle = '#ffcc44';
+    ctx.font = `bold ${Math.min(22, W * 0.03)}px Georgia, serif`;
+    ctx.fillText('Choose one:', W / 2, H * 0.25);
+
+    // Upgrade options
+    const optionW = W * 0.6;
+    const optionH = 60;
+    const startX = (W - optionW) / 2;
+    const startY = H * 0.35;
+
+    for (let i = 0; i < upgradeChoices.length; i++) {
+        const key = upgradeChoices[i];
+        const up = UPGRADES[key];
+        const y = startY + i * (optionH + 15);
+        const selected = upgradeSelected === i;
+        const hover = input.my >= y && input.my <= y + optionH &&
+                      input.mx >= startX && input.mx <= startX + optionW;
+
+        // Box
+        ctx.fillStyle = selected ? 'rgba(255,204,68,0.15)' : hover ? 'rgba(255,248,224,0.06)' : 'rgba(255,248,224,0.03)';
+        ctx.strokeStyle = selected ? '#ffcc44' : hover ? 'rgba(255,248,224,0.3)' : 'rgba(255,248,224,0.1)';
+        ctx.lineWidth = selected ? 2 : 1;
+        ctx.beginPath();
+        ctx.roundRect(startX, y, optionW, optionH, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        // Prompt text (what the keeper sees)
+        ctx.textAlign = 'left';
+        ctx.fillStyle = selected ? '#ffcc44' : '#ccc8b8';
+        ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
+        ctx.fillText(up.prompt, startX + 15, y + 22);
+
+        // Effect description
+        ctx.fillStyle = selected ? '#ddd8c8' : '#888580';
+        ctx.font = `italic ${Math.min(13, W * 0.018)}px Georgia, serif`;
+        ctx.fillText(up.desc.split('. ').slice(1).join('. '), startX + 15, y + 42);
+
+        ctx.textAlign = 'center';
+    }
+
+    // Confirm prompt
+    if (upgradeSelected >= 0) {
+        const pa = 0.4 + Math.sin(time * 3) * 0.2;
+        ctx.fillStyle = `rgba(255,204,68,${pa})`;
+        ctx.font = `${Math.min(14, W * 0.02)}px Georgia, serif`;
+        ctx.fillText('Click again to confirm', W / 2, H * 0.88);
+    }
+
+    // Ability key hints if applicable
+    if (campaign.upgrades.includes('fogHorn') || campaign.upgrades.includes('spyglass')) {
+        ctx.fillStyle = 'rgba(150,145,135,0.5)';
+        ctx.font = `${Math.min(12, W * 0.016)}px Georgia, serif`;
+        let hints = [];
+        if (campaign.upgrades.includes('fogHorn')) hints.push('F — Fog Horn');
+        if (campaign.upgrades.includes('spyglass')) hints.push('G — Spyglass');
+        ctx.fillText(hints.join('    '), W / 2, H * 0.94);
+    }
+
+    ctx.globalAlpha = 1;
+    renderVignette();
+}
+
 function renderState(s) {
     switch (s) {
         case GameState.TITLE: renderTitle(); break;
         case GameState.PLAYING: renderGameplay(); break;
         case GameState.DAWN: renderDawn(); break;
         case GameState.NIGHT_INTRO: renderNightIntro(); break;
+        case GameState.UPGRADE: renderUpgrade(); break;
+        case GameState.KEEPERS_RECORD: renderKeepersRecord(); break;
+        case GameState.FINALE_DARK: renderFinaleDark(); break;
+        case GameState.FINALE_CHOICE: renderFinaleChoice(); break;
+        case GameState.FINALE_END: renderFinaleEnd(); break;
     }
+}
+
+// ── Night 21 Finale ──
+function renderFinaleDark() {
+    // Total darkness. Just ocean sound reference.
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    // After 4 seconds, transition to choice
+    if (stateTimer > 4.0) {
+        state = GameState.FINALE_CHOICE;
+        stateTimer = 0;
+    }
+}
+
+let finaleChoiceHover = -1;
+function renderFinaleChoice() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    // Faint ocean suggestion
+    ctx.globalAlpha = 0.02;
+    for (let x = 0; x < W; x += 30) {
+        const n = noise2d(x * 0.005 + time * 0.1, time * 0.05);
+        ctx.fillStyle = `rgba(100,140,180,${(n + 1) * 0.5})`;
+        ctx.fillRect(x, H * 0.7 + n * 20, 30, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    const fadeIn = Math.min(1, stateTimer / 2.0);
+    ctx.globalAlpha = fadeIn;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // The two choices
+    const choice1Y = H * 0.42;
+    const choice2Y = H * 0.56;
+
+    const hover1 = Math.abs(input.my - choice1Y) < 20 && Math.abs(input.mx - W / 2) < W * 0.3;
+    const hover2 = Math.abs(input.my - choice2Y) < 20 && Math.abs(input.mx - W / 2) < W * 0.3;
+    finaleChoiceHover = hover1 ? 0 : hover2 ? 1 : -1;
+
+    ctx.fillStyle = hover1 ? '#ffcc44' : 'rgba(255,248,224,0.6)';
+    ctx.font = `italic ${Math.min(18, W * 0.025)}px Georgia, serif`;
+    ctx.fillText('Relight the beam. Continue the watch.', W / 2, choice1Y);
+
+    ctx.fillStyle = hover2 ? '#ffcc44' : 'rgba(255,248,224,0.6)';
+    ctx.fillText('Leave the lighthouse. Walk down to the shore.', W / 2, choice2Y);
+
+    ctx.globalAlpha = 1;
+}
+
+function renderFinaleEnd() {
+    const fadeIn = Math.min(1, stateTimer / 2.0);
+
+    if (campaign.finalChoice === 'relight') {
+        // Beam returns at half power, finish the night
+        if (stateTimer < 2.0) {
+            // Fade from black to gameplay
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, W, H);
+            ctx.globalAlpha = fadeIn;
+            ctx.fillStyle = '#ffcc44';
+            ctx.textAlign = 'center';
+            ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
+            ctx.fillText('The light returns.', W / 2, H / 2);
+            ctx.globalAlpha = 1;
+        } else {
+            // Resume gameplay with weakened beam
+            beam.fuel = CFG.beam.fuelMax * 0.5;
+            state = GameState.PLAYING;
+            // Restart ambient
+            if (ambientNode) {
+                ambientNode.gain.gain.setValueAtTime(0.04, getAudio().currentTime);
+            }
+        }
+    } else {
+        // "Leave" ending - slow fade with final text
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+
+        // Small lighthouse light in distance, shrinking
+        const lightSize = Math.max(1, 8 - stateTimer * 0.8);
+        const lightAlpha = Math.max(0, 0.5 - stateTimer * 0.05);
+        ctx.fillStyle = `rgba(255,204,68,${lightAlpha})`;
+        ctx.beginPath();
+        ctx.arc(W / 2, H * 0.3, lightSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(255,204,68,${lightAlpha * 0.3})`;
+        ctx.beginPath();
+        ctx.arc(W / 2, H * 0.3, lightSize * 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Final text appears
+        if (stateTimer > 3.0) {
+            const textAlpha = Math.min(1, (stateTimer - 3.0) / 2.0);
+            ctx.globalAlpha = textAlpha;
+            ctx.fillStyle = '#aaa8a0';
+            ctx.textAlign = 'center';
+            ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
+            ctx.fillText('The sound of waves on stone. The cold air on your face.', W / 2, H * 0.6);
+            ctx.fillText('Behind you, the beam is dark.', W / 2, H * 0.65);
+            ctx.globalAlpha = 1;
+        }
+
+        if (stateTimer > 8.0) {
+            // End — go to keeper's record
+            nightNum = CFG.nights.length; // ensure we're past all nights
+            endNight();
+        }
+    }
+}
+
+// ── Keeper's Record ──
+function renderKeepersRecord() {
+    ctx.fillStyle = '#1a1610';
+    ctx.fillRect(0, 0, W, H);
+
+    const fadeIn = Math.min(1, stateTimer / 2.0);
+    ctx.globalAlpha = fadeIn;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Aged paper background
+    ctx.fillStyle = '#2a2418';
+    const paperW = Math.min(W * 0.8, 600);
+    const paperH = H * 0.8;
+    const paperX = (W - paperW) / 2;
+    const paperY = H * 0.1;
+    ctx.fillRect(paperX, paperY, paperW, paperH);
+    ctx.strokeStyle = '#3a3428';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(paperX, paperY, paperW, paperH);
+
+    // Header
+    ctx.fillStyle = '#aa9870';
+    ctx.font = `bold ${Math.min(24, W * 0.035)}px Georgia, serif`;
+    ctx.fillText('THE KEEPER\'S RECORD', W / 2, paperY + 40);
+
+    ctx.fillStyle = '#887858';
+    ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
+    ctx.fillText('Nights 1 through 21', W / 2, paperY + 65);
+
+    // Tally
+    const totalShips = campaign.totalSaved + campaign.totalLost;
+    ctx.fillStyle = '#ccb888';
+    ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
+    if (campaign.totalLost === 0) {
+        ctx.fillText(`All ${totalShips} vessels found harbor.`, W / 2, paperY + 110);
+    } else {
+        ctx.fillText(`Of ${totalShips} vessels that sought the light, ${campaign.totalSaved} found harbor.`, W / 2, paperY + 110);
+    }
+
+    // Night map: 21 cells
+    const cellSize = Math.min(20, (paperW - 60) / 21);
+    const mapX = W / 2 - (21 * cellSize) / 2;
+    const mapY = paperY + 150;
+
+    for (let i = 0; i < 21; i++) {
+        const result = campaign.nightResults[i];
+        let ratio = 1;
+        if (result) {
+            const total = result.saved + result.lost;
+            ratio = total > 0 ? result.saved / total : 1;
+        }
+        // Gold (good) to dark red (bad)
+        const r = Math.floor(lerp(80, 255, ratio));
+        const g = Math.floor(lerp(20, 200, ratio));
+        const b = Math.floor(lerp(20, 68, ratio));
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(mapX + i * cellSize, mapY, cellSize - 2, cellSize - 2);
+
+        // Night number below every 7th
+        if ((i + 1) % 7 === 0 || i === 0) {
+            ctx.fillStyle = '#665840';
+            ctx.font = `${Math.min(10, W * 0.013)}px Georgia, serif`;
+            ctx.fillText(`${i + 1}`, mapX + i * cellSize + cellSize / 2 - 1, mapY + cellSize + 12);
+        }
+    }
+
+    // Week labels
+    ctx.fillStyle = '#665840';
+    ctx.font = `italic ${Math.min(11, W * 0.015)}px Georgia, serif`;
+    ctx.fillText('The Routine', mapX + 3 * cellSize, mapY + cellSize + 28);
+    ctx.fillText('The Deterioration', mapX + 10 * cellSize, mapY + cellSize + 28);
+    ctx.fillText('The Reckoning', mapX + 18 * cellSize, mapY + cellSize + 28);
+
+    // Whisper
+    const whisperY = mapY + cellSize + 60;
+    ctx.fillStyle = '#8878a8';
+    ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
+    if (campaign.whispersCollected.length >= 12) {
+        ctx.fillText('"' + campaign.whispersCollected.join(' ') + '"', W / 2, whisperY);
+    } else if (campaign.whispersCollected.length > 0) {
+        ctx.fillText('"' + campaign.whispersCollected.join(' ') + '..."', W / 2, whisperY);
+        ctx.fillStyle = '#665850';
+        ctx.fillText('Something spoke from the water. You did not hear it all.', W / 2, whisperY + 22);
+    } else {
+        ctx.fillStyle = '#665850';
+        ctx.fillText('Something spoke from the water. You did not hear it all.', W / 2, whisperY);
+    }
+
+    // Final line
+    const finalY = paperY + paperH - 50;
+    ctx.fillStyle = '#ccb888';
+    ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
+    const ratio = campaign.totalSaved / Math.max(1, campaign.totalSaved + campaign.totalLost);
+    let finalLine;
+    if (campaign.finalChoice === 'relight') {
+        finalLine = ratio > 0.7 ? 'The light held. The coast remembers.' :
+                    ratio > 0.4 ? 'The light held, though the cost was heavy.' :
+                    'The light held. But the dark took its share.';
+    } else if (campaign.finalChoice === 'leave') {
+        finalLine = ratio > 0.7 ? 'They found their way. You found the shore.' :
+                    ratio > 0.4 ? 'Some found harbor. You found the shore.' :
+                    'The dark claimed its due. You chose the shore.';
+    } else {
+        finalLine = ratio > 0.7 ? 'The light held. The coast remembers.' :
+                    'The night passes. The sea endures.';
+    }
+    ctx.fillText(finalLine, W / 2, finalY);
+
+    ctx.globalAlpha = 1;
+
+    // Return prompt
+    if (stateTimer > 3.0) {
+        const pa = 0.3 + Math.sin(time * 3) * 0.2;
+        ctx.fillStyle = `rgba(170,152,112,${pa})`;
+        ctx.font = `${Math.min(13, W * 0.018)}px Georgia, serif`;
+        ctx.fillText('Click to return', W / 2, H * 0.95);
+    }
+}
+
+// ── Campaign Persistence ──
+function saveCampaign() {
+    try {
+        localStorage.setItem('lastLight_campaign', JSON.stringify({
+            nightNum, campaign,
+            upgrades: campaign.upgrades,
+        }));
+    } catch(e) {}
+}
+
+function loadCampaign() {
+    try {
+        const data = JSON.parse(localStorage.getItem('lastLight_campaign'));
+        if (data && data.nightNum > 0 && data.nightNum < CFG.nights.length) {
+            nightNum = data.nightNum;
+            Object.assign(campaign, data.campaign);
+            applyUpgrades();
+            return true;
+        }
+    } catch(e) {}
+    return false;
+}
+
+function clearSave() {
+    try { localStorage.removeItem('lastLight_campaign'); } catch(e) {}
 }
 
 // ── Initialize ──
