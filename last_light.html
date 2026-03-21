@@ -393,8 +393,8 @@ function updateWhispers(dt) {
     if (whisperNextIndex < WHISPER_FRAGMENTS.length && Math.random() < 0.003) {
         // Check beam is over empty water (no entities nearby)
         const checkDist = beam.getLength() * (0.3 + Math.random() * 0.5);
-        const checkX = lighthouse.x + Math.cos(beam.angle) * checkDist;
-        const checkY = lighthouse.y + Math.sin(beam.angle) * checkDist;
+        const checkX = lighthouse.lightX + Math.cos(beam.angle) * checkDist;
+        const checkY = lighthouse.lightY + Math.sin(beam.angle) * checkDist;
 
         let nearEntity = false;
         for (const s of ships) {
@@ -855,6 +855,9 @@ const lighthouse = {
     x: 0, y: 0, // set on resize
     width: 28,
     height: 90,
+    // Light source position (top of lantern room)
+    get lightX() { return this.x; },
+    get lightY() { return this.y - this.height - 5; },
 };
 
 // ── Beam ──
@@ -867,9 +870,9 @@ const beam = {
     overdriveFlash: 0,
 
     update(dt) {
-        // Target angle from mouse
-        const dx = input.mx - lighthouse.x;
-        const dy = input.my - lighthouse.y;
+        // Target angle from mouse (relative to light source at top of lighthouse)
+        const dx = input.mx - lighthouse.lightX;
+        const dy = input.my - lighthouse.lightY;
         let targetAngle = Math.atan2(dy, dx);
 
         // Clamp to upper semicircle (-PI to 0, roughly)
@@ -905,8 +908,8 @@ const beam = {
         if (Math.random() < 0.3) {
             const dist = 60 + Math.random() * this.getLength() * 0.6;
             const spread = (Math.random() - 0.5) * this.getConeAngle() * 0.5;
-            const px = lighthouse.x + Math.cos(this.angle + spread) * dist;
-            const py = lighthouse.y + Math.sin(this.angle + spread) * dist;
+            const px = lighthouse.lightX + Math.cos(this.angle + spread) * dist;
+            const py = lighthouse.lightY + Math.sin(this.angle + spread) * dist;
             spawnParticle(px, py, {
                 speed: 5 + Math.random() * 10,
                 angle: Math.random() * Math.PI * 2,
@@ -942,14 +945,14 @@ const beam = {
     isPointIlluminated(px, py) {
         // Fog horn reveals everything temporarily
         if (fogHornActive > 0) {
-            const dx = px - lighthouse.x;
-            const dy = py - lighthouse.y;
+            const dx = px - lighthouse.lightX;
+            const dy = py - lighthouse.lightY;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist < Math.max(W, H) * 0.8) return 0.4; // moderate reveal
         }
 
-        const dx = px - lighthouse.x;
-        const dy = py - lighthouse.y;
+        const dx = px - lighthouse.lightX;
+        const dy = py - lighthouse.lightY;
         const dist = Math.sqrt(dx * dx + dy * dy);
         let len = this.getLength();
 
@@ -988,7 +991,7 @@ const beam = {
         }
 
         ctx.save();
-        ctx.translate(lighthouse.x, lighthouse.y);
+        ctx.translate(lighthouse.lightX, lighthouse.lightY);
 
         // The cone
         const a1 = this.angle - cone;
@@ -2117,7 +2120,7 @@ function renderTitle() {
     // Dim beam sweep
     const sweepAngle = -Math.PI / 2 + Math.sin(time * 0.4) * 0.6;
     ctx.save();
-    ctx.translate(lighthouse.x, lighthouse.y - lighthouse.height - 5);
+    ctx.translate(lighthouse.lightX, lighthouse.lightY);
     const tGrad = ctx.createRadialGradient(0, 0, 5, 0, 0, H * 0.5);
     tGrad.addColorStop(0, 'rgba(255,204,68,0.06)');
     tGrad.addColorStop(1, 'rgba(255,204,68,0)');
@@ -2409,7 +2412,7 @@ function renderGameplay() {
     // Fog horn reveal flash
     if (fogHornActive > 0) {
         const pulse = fogHornActive / FOG_HORN_DURATION;
-        const grad = ctx.createRadialGradient(lighthouse.x, lighthouse.y, 10, lighthouse.x, lighthouse.y, Math.max(W, H) * 0.7);
+        const grad = ctx.createRadialGradient(lighthouse.lightX, lighthouse.lightY, 10, lighthouse.lightX, lighthouse.lightY, Math.max(W, H) * 0.7);
         grad.addColorStop(0, `rgba(255,248,224,${pulse * 0.08})`);
         grad.addColorStop(1, 'rgba(255,248,224,0)');
         ctx.fillStyle = grad;
@@ -2423,8 +2426,8 @@ function renderGameplay() {
         const sLen = beam.getLength() * 1.5;
         const sCone = beam.getConeAngle() * 0.3;
         ctx.beginPath();
-        ctx.moveTo(lighthouse.x, lighthouse.y);
-        ctx.arc(lighthouse.x, lighthouse.y, sLen, beam.angle - sCone, beam.angle + sCone);
+        ctx.moveTo(lighthouse.lightX, lighthouse.lightY);
+        ctx.arc(lighthouse.lightX, lighthouse.lightY, sLen, beam.angle - sCone, beam.angle + sCone);
         ctx.closePath();
         ctx.stroke();
     }
