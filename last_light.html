@@ -107,120 +107,84 @@ const CFG = {
             desc: "The sea is calm. Guide the skiffs to harbor.",
         },
         { // Night 2: Skiffs + first Merchant
-            skiffs: 3, merchants: 1, passengers: 0, ghostShips: 0,
+            skiffs: 4, merchants: 1, passengers: 0, ghostShips: 0,
             lurkers: 0, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
             spawnInterval: [7, 12], duration: 90,
             desc: "A merchant vessel approaches. Hold the beam steady.",
         },
-        { // Night 3: Skiffs + Merchant + Lurkers
-            skiffs: 4, merchants: 1, passengers: 0, ghostShips: 0,
-            lurkers: 3, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
+        { // Night 3: Lurkers introduced
+            skiffs: 5, merchants: 1, passengers: 0, ghostShips: 0,
+            lurkers: 4, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
             spawnInterval: [6, 10], duration: 90,
             desc: "Something moves beneath the surface.",
         },
-        { // Night 4
-            skiffs: 5, merchants: 1, passengers: 0, ghostShips: 0,
-            lurkers: 5, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
+        { // Night 4: Growing threat
+            skiffs: 6, merchants: 2, passengers: 0, ghostShips: 0,
+            lurkers: 6, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
             spawnInterval: [5, 9], duration: 90,
             desc: "The dark is restless tonight.",
         },
-        { // Night 5
-            skiffs: 6, merchants: 2, passengers: 0, ghostShips: 0,
-            lurkers: 4, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
-            spawnInterval: [5, 9], duration: 90,
-            desc: "More ships seek the light.",
-        },
-        { // Night 6: Flinches introduced
-            skiffs: 4, merchants: 2, passengers: 0, ghostShips: 0,
-            lurkers: 6, flinches: 2, mimics: 0, abyssals: 0, shades: 0,
-            spawnInterval: [5, 8], duration: 90,
-            desc: "Quick shapes dart at the edges.",
-        },
-        { // Night 7: First passenger vessel
-            skiffs: 6, merchants: 2, passengers: 1, ghostShips: 0,
+        { // Night 5: Flinches + passengers
+            skiffs: 5, merchants: 2, passengers: 1, ghostShips: 0,
             lurkers: 5, flinches: 3, mimics: 0, abyssals: 0, shades: 0,
-            spawnInterval: [4, 8], duration: 90,
-            desc: "A passenger vessel among them tonight.",
+            spawnInterval: [5, 8], duration: 90,
+            desc: "Quick shapes dart at the edges. A passenger vessel among them.",
         },
-        { // Night 8: Mimics introduced
+        { // Night 6: Mimics introduced
             skiffs: 5, merchants: 2, passengers: 0, ghostShips: 0,
-            lurkers: 6, flinches: 3, mimics: 1, abyssals: 0, shades: 0,
-            spawnInterval: [4, 8], duration: 105,
+            lurkers: 6, flinches: 3, mimics: 2, abyssals: 0, shades: 0,
+            spawnInterval: [4, 8], duration: 100,
             desc: "Not everything in the water is what it seems.",
         },
-        { // Night 9: Fog
+        { // Night 7: Fog
             skiffs: 6, merchants: 2, passengers: 0, ghostShips: 0,
             lurkers: 7, flinches: 4, mimics: 2, abyssals: 0, shades: 0,
-            spawnInterval: [4, 7], duration: 105, event: 'fog',
+            spawnInterval: [4, 7], duration: 100, event: 'fog',
             desc: "Fog rolls in from the north.",
         },
-        { // Night 10: Ghost ship + whispers begin
+        { // Night 8: Ghost ship + whispers begin
             skiffs: 5, merchants: 3, passengers: 1, ghostShips: 1,
-            lurkers: 6, flinches: 3, mimics: 2, abyssals: 0, shades: 0,
-            spawnInterval: [4, 7], duration: 105,
+            lurkers: 7, flinches: 3, mimics: 2, abyssals: 0, shades: 0,
+            spawnInterval: [4, 7], duration: 100,
             desc: "A derelict drifts from the east channel.",
         },
-        { // Night 11: Storm
-            skiffs: 7, merchants: 2, passengers: 0, ghostShips: 0,
-            lurkers: 8, flinches: 4, mimics: 2, abyssals: 0, shades: 0,
-            spawnInterval: [3, 7], duration: 105, event: 'storm',
+        { // Night 9: Storm
+            skiffs: 7, merchants: 3, passengers: 0, ghostShips: 0,
+            lurkers: 8, flinches: 4, mimics: 3, abyssals: 0, shades: 0,
+            spawnInterval: [3, 6], duration: 105, event: 'storm',
             desc: "The swell is rising.",
         },
-        { // Night 12: Red tide
-            skiffs: 6, merchants: 3, passengers: 0, ghostShips: 1,
-            lurkers: 7, flinches: 3, mimics: 3, abyssals: 0, shades: 0,
-            spawnInterval: [3, 7], duration: 105, event: 'redTide',
-            desc: "The water glows faintly tonight.",
-        },
-        { // Night 13
-            skiffs: 7, merchants: 3, passengers: 1, ghostShips: 0,
-            lurkers: 9, flinches: 5, mimics: 2, abyssals: 0, shades: 0,
-            spawnInterval: [3, 6], duration: 105,
-            desc: "The night stretches longer than it should.",
-        },
-        { // Night 14: New moon
-            skiffs: 8, merchants: 3, passengers: 0, ghostShips: 0,
-            lurkers: 8, flinches: 4, mimics: 3, abyssals: 0, shades: 0,
+        { // Night 10: New moon
+            skiffs: 7, merchants: 3, passengers: 0, ghostShips: 0,
+            lurkers: 9, flinches: 5, mimics: 3, abyssals: 0, shades: 0,
             spawnInterval: [3, 6], duration: 105, event: 'newMoon',
             desc: "No moon tonight. Only the beam.",
         },
-        { // Night 15: Abyssals introduced
-            skiffs: 6, merchants: 3, passengers: 0, ghostShips: 0,
-            lurkers: 7, flinches: 4, mimics: 2, abyssals: 1, shades: 0,
+        { // Night 11: Abyssals introduced
+            skiffs: 6, merchants: 3, passengers: 1, ghostShips: 0,
+            lurkers: 8, flinches: 4, mimics: 2, abyssals: 1, shades: 0,
             spawnInterval: [3, 6], duration: 110,
             desc: "Something vast moves beneath.",
         },
-        { // Night 16: Shades introduced
-            skiffs: 7, merchants: 3, passengers: 1, ghostShips: 0,
-            lurkers: 8, flinches: 4, mimics: 0, abyssals: 0, shades: 2,
+        { // Night 12: Shades + fog
+            skiffs: 7, merchants: 3, passengers: 0, ghostShips: 0,
+            lurkers: 9, flinches: 4, mimics: 2, abyssals: 1, shades: 2,
             spawnInterval: [3, 6], duration: 110, event: 'fog',
             desc: "Whispers from the base of the tower.",
         },
-        { // Night 17: Full roster
-            skiffs: 8, merchants: 3, passengers: 0, ghostShips: 0,
-            lurkers: 9, flinches: 5, mimics: 3, abyssals: 1, shades: 2,
-            spawnInterval: [3, 6], duration: 110,
-            desc: "They come from every direction now.",
-        },
-        { // Night 18: Peak difficulty
+        { // Night 13: Peak difficulty
             skiffs: 9, merchants: 4, passengers: 0, ghostShips: 1,
             lurkers: 10, flinches: 6, mimics: 3, abyssals: 2, shades: 3,
             spawnInterval: [2, 5], duration: 110, event: 'storm',
             desc: "The worst night. Hold fast.",
         },
-        { // Night 19
-            skiffs: 8, merchants: 4, passengers: 0, ghostShips: 0,
-            lurkers: 10, flinches: 5, mimics: 4, abyssals: 1, shades: 3,
-            spawnInterval: [2, 5], duration: 110, event: 'newMoon',
-            desc: "Darkness absolute.",
-        },
-        { // Night 20: The breather
+        { // Night 14: The breather
             skiffs: 3, merchants: 1, passengers: 0, ghostShips: 0,
             lurkers: 2, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
             spawnInterval: [8, 14], duration: 90,
             desc: "The sea is calm. Almost gentle.",
         },
-        { // Night 21: The finale
+        { // Night 15: The finale
             skiffs: 7, merchants: 3, passengers: 2, ghostShips: 1,
             lurkers: 8, flinches: 5, mimics: 3, abyssals: 2, shades: 4,
             spawnInterval: [2, 5], duration: 120, finale: true,
@@ -325,24 +289,23 @@ const JOURNAL_ENTRIES = [
     "Wind picking up from the northeast. The merchant from Harrow Bay arrived late. Noticed scratches on the eastern railing. Gulls, probably.",
     "Fog at dawn. Something scraped the rocks below during the night. Checked at first light\u2014nothing there. Tide marks higher than usual.",
     "The mechanism needs oiling. It groans when it turns past north-northwest. Heard the same sound from the water tonight. Coincidence.",
-    "Two merchantmen tonight. The second one nearly missed the channel. I held the beam too long on the first. Need to be faster.",
     "Something quick in the water. Not fish. Wrong movement. The beam caught it for a moment\u2014it stopped. Then I looked away.",
-    "The passenger vessel came through safe. Forty souls, the harbor master said. I keep thinking about the shapes at the edge of the light.",
-    // Week 2: erratic, deteriorating
     "Can\u2019t sleep during the day anymore. The scratching is louder. Not gulls.",
     "The fog is wrong. Things move in it. I saw\u2014no. The lens needs cleaning.",
+    // Week 2: erratic, deteriorating
     "The lighthouse at Carden Point went dark three nights ago. No word from the keeper.",
     "The water speaks. I know how that sounds. But when the beam passes over open sea, there are words. Almost.",
-    "The red in the water. The old logbook mentions it. \u2018When the sea remembers, keep the beam steady.\u2019 I don\u2019t know what that means.",
-    "Found the previous keeper\u2019s journal behind the mechanism housing. Most of it is weather. The last twenty pages are the same sentence, over and over. I can\u2019t read it in this light.",
+    "Found the previous keeper\u2019s journal behind the mechanism housing. Most of it is weather. The last pages are the same sentence, over and over.",
+    "The dark has weight now. It presses against the glass.",
+    "Whispers from below. The beam holds them back. But for how long?",
     "Still here.",
-    // Week 3: dynamically generated from player stats (these are fallbacks)
-    null, null, null, null, null, null, null
+    // Final nights: dynamically generated from player stats
+    null, null
 ];
 
 function getJournalEntry(nightIdx) {
     // Weeks 1-2: use pre-written entries
-    if (nightIdx < 14 && JOURNAL_ENTRIES[nightIdx]) {
+    if (nightIdx < 13 && JOURNAL_ENTRIES[nightIdx]) {
         return JOURNAL_ENTRIES[nightIdx];
     }
     // Week 3: generate from player's night
@@ -386,8 +349,8 @@ let activeWhispers = []; // {x, y, text, life, maxLife, collected}
 let whisperNextIndex = 0; // which fragment to spawn next
 
 function updateWhispers(dt) {
-    // Only spawn whispers from Night 10 onward
-    if (nightNum < 9) return;
+    // Only spawn whispers from Night 8 onward
+    if (nightNum < 7) return;
 
     // Chance to spawn a whisper when beam is over empty water
     if (whisperNextIndex < WHISPER_FRAGMENTS.length && Math.random() < 0.003) {
@@ -524,7 +487,7 @@ const input = {
         } else if (state === GameState.DAWN) {
             if (stateTimer > 2.0) {
                 if (nightNum < CFG.nights.length) {
-                    // Go to upgrade selection (skip for night 21 / after last night)
+                    // Go to upgrade selection (skip for final night / after last night)
                     upgradeChoices = getUpgradeChoices(nightNum);
                     upgradeSelected = -1;
                     changeState(GameState.UPGRADE, 0.8);
@@ -2502,7 +2465,7 @@ function updateGameplay(dt) {
 
     const nightDuration = cfg.duration || CFG.night.duration;
 
-    // Night 21 finale: beam fails at 60%
+    // Night 15 finale: beam fails at 60%
     if (cfg.finale && nightTimer >= nightDuration * 0.6 && !finaleTriggered) {
         finaleTriggered = true;
         state = GameState.FINALE_DARK;
@@ -2740,7 +2703,7 @@ function renderState(s) {
     }
 }
 
-// ── Night 21 Finale ──
+// ── Night 15 Finale ──
 function renderFinaleDark() {
     // Total darkness. Just ocean sound reference.
     ctx.fillStyle = '#000';
@@ -2881,7 +2844,7 @@ function renderKeepersRecord() {
 
     ctx.fillStyle = '#887858';
     ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
-    ctx.fillText('Nights 1 through 21', W / 2, paperY + 65);
+    ctx.fillText('Nights 1 through 15', W / 2, paperY + 65);
 
     // Tally
     const totalShips = campaign.totalSaved + campaign.totalLost;
@@ -2893,12 +2856,12 @@ function renderKeepersRecord() {
         ctx.fillText(`Of ${totalShips} vessels that sought the light, ${campaign.totalSaved} found harbor.`, W / 2, paperY + 110);
     }
 
-    // Night map: 21 cells
-    const cellSize = Math.min(20, (paperW - 60) / 21);
-    const mapX = W / 2 - (21 * cellSize) / 2;
+    // Night map: 15 cells
+    const cellSize = Math.min(20, (paperW - 60) / 15);
+    const mapX = W / 2 - (15 * cellSize) / 2;
     const mapY = paperY + 150;
 
-    for (let i = 0; i < 21; i++) {
+    for (let i = 0; i < 15; i++) {
         const result = campaign.nightResults[i];
         let ratio = 1;
         if (result) {
@@ -2912,8 +2875,8 @@ function renderKeepersRecord() {
         ctx.fillStyle = `rgb(${r},${g},${b})`;
         ctx.fillRect(mapX + i * cellSize, mapY, cellSize - 2, cellSize - 2);
 
-        // Night number below every 7th
-        if ((i + 1) % 7 === 0 || i === 0) {
+        // Night number below every 5th
+        if ((i + 1) % 5 === 0 || i === 0) {
             ctx.fillStyle = '#665840';
             ctx.font = `${Math.min(10, W * 0.013)}px Georgia, serif`;
             ctx.fillText(`${i + 1}`, mapX + i * cellSize + cellSize / 2 - 1, mapY + cellSize + 12);
