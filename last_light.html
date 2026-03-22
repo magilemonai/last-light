@@ -233,8 +233,8 @@ const UPGRADES = {
                      prompt: 'The shutters need reinforcing.', effect: 'shades 30% slower' },
     spyglass:      { name: 'Spyglass',       desc: 'A spyglass sits in the drawer. See further, if only for a moment.',
                      prompt: 'A spyglass sits in the drawer.', effect: 'active: zoom beam briefly' },
-    logBook:       { name: 'Log Book',       desc: 'A proper record keeps the mind sharp. Review where danger struck.',
-                     prompt: 'The logbook needs updating.', effect: 'see loss/danger map at dawn' },
+    logBook:       { name: 'Log Book',       desc: 'A proper record keeps the mind sharp. Marks where ships were lost so you can watch those waters.',
+                     prompt: 'The logbook needs updating.', effect: 'shows wreck positions during gameplay' },
 };
 
 // Which upgrades to offer each night (pairs or triples)
@@ -1016,14 +1016,14 @@ function spawnShip(type) {
     let x, y, targetAngle;
 
     if (edge < 0.6) {
-        // From sides
+        // From sides (keep within water area, not sky)
         x = side > 0 ? W + 20 : -20;
-        y = H * (0.1 + Math.random() * 0.4);
+        y = H * (0.22 + Math.random() * 0.35);
         targetAngle = side > 0 ? Math.PI + (Math.random() - 0.5) * 0.6 : (Math.random() - 0.5) * 0.6;
     } else {
-        // From top
+        // From the far horizon
         x = W * (0.15 + Math.random() * 0.7);
-        y = -20;
+        y = H * 0.12;
         targetAngle = Math.PI / 2 + (Math.random() - 0.5) * 0.5;
     }
 
@@ -1934,7 +1934,7 @@ function renderWater() {
     // Deep gradient
     const grad = ctx.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0, CFG.colors.deepSky);
-    grad.addColorStop(0.4, '#0b1830');
+    grad.addColorStop(0.15, '#0b1830');
     grad.addColorStop(1, CFG.colors.darkWater);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
@@ -1944,7 +1944,7 @@ function renderWater() {
     const scale = 0.008;
     const t = time * 0.15;
     for (let x = 0; x < W; x += 20) {
-        for (let y = H * 0.3; y < H; y += 20) {
+        for (let y = H * 0.18; y < H; y += 20) {
             const n = noise2d(x * scale + t, y * scale + t * 0.5);
             const brightness = (n + 1) * 0.5;
             ctx.fillStyle = `rgba(100,140,180,${brightness})`;
@@ -2124,6 +2124,11 @@ function renderTitle() {
     ctx.font = `${Math.min(18, W * 0.025)}px Georgia, serif`;
     ctx.fillText('A lighthouse keeper\u2019s vigil against the dark', W / 2, titleY + 50);
 
+    // Brief premise
+    ctx.fillStyle = 'rgba(150,145,135,0.35)';
+    ctx.font = `italic ${Math.min(13, W * 0.018)}px Georgia, serif`;
+    ctx.fillText('Guide ships to harbor. Keep the light burning.', W / 2, titleY + 80);
+
     // Start prompt
     const promptAlpha = 0.3 + Math.sin(time * 3) * 0.3;
     ctx.fillStyle = `rgba(255,248,224,${promptAlpha})`;
@@ -2148,7 +2153,8 @@ function renderNightIntro() {
     ctx.fillRect(0, 0, W, H);
 
     const cfg = CFG.nights[nightNum];
-    const alpha = stateTimer < 0.5 ? stateTimer / 0.5 : stateTimer > 2.5 ? 1 - (stateTimer - 2.5) / 0.5 : 1;
+    const introDuration = nightNum === 0 ? 5.5 : 3.0;
+    const alpha = stateTimer < 0.5 ? stateTimer / 0.5 : stateTimer > introDuration - 0.5 ? 1 - (stateTimer - (introDuration - 0.5)) / 0.5 : 1;
 
     ctx.globalAlpha = Math.max(0, alpha);
     ctx.textAlign = 'center';
@@ -2156,15 +2162,38 @@ function renderNightIntro() {
 
     ctx.fillStyle = '#ffcc44';
     ctx.font = `bold ${Math.min(36, W * 0.05)}px Georgia, serif`;
-    ctx.fillText(`Night ${nightNum + 1}`, W / 2, H * 0.4);
+    ctx.fillText(`Night ${nightNum + 1}`, W / 2, H * 0.35);
 
     ctx.fillStyle = '#aaa8a0';
     ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
-    ctx.fillText(cfg.desc || '', W / 2, H * 0.5);
+    ctx.fillText(cfg.desc || '', W / 2, H * 0.45);
+
+    // Tutorial on Night 1
+    if (nightNum === 0) {
+        const tutAlpha = stateTimer < 1.5 ? Math.max(0, (stateTimer - 0.8) / 0.7) : alpha;
+        ctx.globalAlpha = Math.max(0, tutAlpha) * 0.7;
+        const small = Math.min(13, W * 0.018);
+        ctx.font = `${small}px Georgia, serif`;
+        ctx.fillStyle = '#887858';
+        const controlY = H * 0.58;
+        const lineH = small * 1.8;
+        const controls = input.touched ? [
+            'Drag to aim the beam',
+            'Illuminate ships to guide them to harbor',
+            'Two-finger tap to focus the beam (uses fuel)',
+        ] : [
+            'Move the mouse to aim the beam',
+            'Illuminate ships to guide them to harbor',
+            'Hold SPACE to focus the beam (uses fuel)',
+        ];
+        for (let i = 0; i < controls.length; i++) {
+            ctx.fillText(controls[i], W / 2, controlY + i * lineH);
+        }
+    }
 
     ctx.globalAlpha = 1;
 
-    if (stateTimer > 3.0) {
+    if (stateTimer > introDuration) {
         state = GameState.PLAYING;
         onStateEnter(GameState.PLAYING);
     }
@@ -2395,6 +2424,21 @@ function renderGameplay() {
         ctx.stroke();
     }
 
+    // In-game tutorial hint (Night 1 only, first 12 seconds)
+    if (nightNum === 0 && nightTimer < 12) {
+        const hintAlpha = nightTimer < 2 ? nightTimer / 2 : nightTimer > 9 ? (12 - nightTimer) / 3 : 1;
+        ctx.globalAlpha = hintAlpha * 0.5;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffcc44';
+        ctx.font = `${Math.min(12, W * 0.016)}px Georgia, serif`;
+        if (nightTimer < 6) {
+            ctx.fillText('Sweep the beam across the water to find ships', W / 2, H * 0.06);
+        } else {
+            ctx.fillText('Hold the light on a ship to guide it to the harbor below', W / 2, H * 0.06);
+        }
+        ctx.globalAlpha = 1;
+    }
+
     // Ability cooldown indicators (subtle, bottom-left)
     let abilityY = H - 20;
     ctx.textAlign = 'left';
@@ -2573,8 +2617,12 @@ function loop(ts) {
                 ctx.fillStyle = `rgba(0,0,0,${ease.inQuad(progress * 2)})`;
                 ctx.fillRect(0, 0, W, H);
             } else {
-                // Render new state fading in
+                // Render new state at time=0 behind the fade overlay
+                // (prevents double-brighten when dawn/upgrade have their own fade-in)
+                const savedTimer = stateTimer;
+                stateTimer = 0;
                 renderState(transitionTo);
+                stateTimer = savedTimer;
                 ctx.fillStyle = `rgba(0,0,0,${1 - ease.outCubic((progress - 0.5) * 2)})`;
                 ctx.fillRect(0, 0, W, H);
             }
