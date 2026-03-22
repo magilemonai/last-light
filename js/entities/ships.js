@@ -10,6 +10,10 @@ import { playSound } from '../systems/audio.js';
 
 export let ships = [];
 
+// T3: Event callbacks for wreckage and arrival effects
+let shipEventCallback = null;
+export function onShipEvent(fn) { shipEventCallback = fn; }
+
 export function clearShips() { ships = []; }
 
 export function spawnShip(type) {
@@ -53,6 +57,8 @@ export function spawnShip(type) {
         size: sizes[type] || 14,
         revealed: type !== 'ghostShip',
         revealProgress: type === 'ghostShip' ? 0 : 1,
+        // T3: Fade-in on spawn
+        spawnFade: 0,
         // T1: Wake trail
         wakeTrail: [],
         wakeTimer: 0,
@@ -71,6 +77,9 @@ export function updateShips(dt, time, activeEvent, harborGlowRef, fogHornActive,
     const H = window.innerHeight || 1080;
 
     for (const s of ships) {
+        // T3: Fade in over 1.5 seconds
+        if (s.spawnFade < 1) s.spawnFade = Math.min(1, s.spawnFade + dt / 1.5);
+
         // Update wake trail
         s.wakeTimer += dt;
         if (s.wakeTimer > 0.1 && !s.sinking) {
@@ -191,6 +200,8 @@ export function updateShips(dt, time, activeEvent, harborGlowRef, fogHornActive,
             if (s.type === 'passenger') nightStats.passengersSaved++;
             harborGlowRef.value += 0.15;
             playSound('arrive');
+            // T3: Notify for arrival effects
+            if (shipEventCallback) shipEventCallback('arrive', s);
             // T4: tally flash
             const label = s.type === 'passenger' ? 'Passengers safe' : s.type === 'merchant' ? 'Merchant safe' : 'Safe harbor';
             addTallyFlash(s.x, s.y - 20, label);
@@ -221,7 +232,9 @@ export function updateShips(dt, time, activeEvent, harborGlowRef, fogHornActive,
             nightStats.lost++;
             if (s.type === 'passenger') nightStats.passengersLost++;
             playSound('sink');
-            triggerShake(s.type === 'passenger' ? 8 : 5); // T4: screen shake
+            triggerShake(s.type === 'passenger' ? 8 : 5);
+            // T3: Notify for wreckage accumulation
+            if (shipEventCallback) shipEventCallback('sink', s);
         }
     }
 
@@ -232,7 +245,7 @@ export function updateShips(dt, time, activeEvent, harborGlowRef, fogHornActive,
 export function renderShips(ctx, time, activeEvent, fogHornActive, spyglassActive) {
     for (const s of ships) {
         const ill = beam.isPointIlluminated(s.x, s.y, activeEvent, fogHornActive, spyglassActive);
-        const vis = Math.max(0.08, ill * 0.8 + 0.2 * s.lanternBright);
+        const vis = Math.max(0.08, ill * 0.8 + 0.2 * s.lanternBright) * s.spawnFade;
         const bob = Math.sin(s.bobPhase) * 2;
 
         // T1: Wake trail — visible even when ship is dark

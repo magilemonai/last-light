@@ -50,6 +50,8 @@ export function spawnCreature(type) {
         luredByGhost: false,
         // T1: Mimic behavioral tell — stutter timer
         mimicStutterTimer: type === 'mimic' ? 1.5 + Math.random() * 2 : 0,
+        // T3: Fade-in on spawn
+        spawnFade: 0,
     });
 }
 
@@ -59,6 +61,9 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
     const aggressionMult = activeEvent === 'redTide' ? 1.5 : 1.0;
 
     for (const c of creatures) {
+        // T3: Fade in over 1 second
+        if (c.spawnFade < 1) c.spawnFade = Math.min(1, c.spawnFade + dt);
+
         c.phase += dt * 3;
         const ill = beam.isPointIlluminated(c.x, c.y, activeEvent, fogHornActive, spyglassActive);
         const distToLighthouse = Math.sqrt((c.x - lighthouse.x) ** 2 + (c.y - lighthouse.y) ** 2);
@@ -414,6 +419,8 @@ export function renderCreatures(ctx, time, activeEvent, fogHornActive, spyglassA
     for (const c of creatures) {
         const ill = beam.isPointIlluminated(c.x, c.y, activeEvent, fogHornActive, spyglassActive);
         const undulate = Math.sin(c.phase) * 3;
+        // T3: Skip rendering during fade-in (very low alpha)
+        if (c.spawnFade < 0.05) continue;
 
         // ── MIMIC disguised — T1: faster bobbing + stutter freeze ──
         if (c.type === 'mimic' && c.disguised) {
@@ -423,7 +430,7 @@ export function renderCreatures(ctx, time, activeEvent, fogHornActive, spyglassA
             const mimicBob = stuttering ? 0 : Math.sin(c.phase * 1.36) * 2.5;
             ctx.save();
             ctx.translate(c.x, c.y + mimicBob);
-            ctx.globalAlpha = vis;
+            ctx.globalAlpha = vis * c.spawnFade;
             ctx.fillStyle = `rgba(90,80,60,${vis})`;
             ctx.beginPath();
             ctx.ellipse(0, 0, 10, 4, 0, 0, Math.PI);
@@ -444,14 +451,14 @@ export function renderCreatures(ctx, time, activeEvent, fogHornActive, spyglassA
             continue;
         }
 
-        const vis = Math.max(0.03, ill * 0.7);
+        const vis = Math.max(0.03, ill * 0.7) * c.spawnFade;
 
         ctx.save();
         ctx.translate(c.x, c.y + undulate);
 
         // ── ABYSSAL ──
         if (c.type === 'abyssal') {
-            ctx.globalAlpha = Math.max(0.06, ill * 0.5);
+            ctx.globalAlpha = Math.max(0.06, ill * 0.5) * c.spawnFade;
             ctx.fillStyle = '#0c0515';
             ctx.beginPath();
             const segs = 12;
@@ -489,7 +496,7 @@ export function renderCreatures(ctx, time, activeEvent, fogHornActive, spyglassA
 
         // ── SHADE ──
         if (c.type === 'shade') {
-            ctx.globalAlpha = Math.max(0.04, ill * 0.5);
+            ctx.globalAlpha = Math.max(0.04, ill * 0.5) * c.spawnFade;
             ctx.fillStyle = '#1a0825';
             ctx.beginPath();
             const segs = 10;

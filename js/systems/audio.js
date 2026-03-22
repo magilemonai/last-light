@@ -405,7 +405,70 @@ export function playSound(type) {
     } catch(e) {}
 }
 
-// ── Ambient Layers ──
+// ── T3: Sparse Between-Night Piano ──
+// Procedurally generated piano-like tones using detuned sine pairs + fast decay
+
+let pianoSequenceTimer = null;
+
+export function playPianoSequence() {
+    try {
+        const ac = getAudio();
+        const now = ac.currentTime;
+
+        // A minor pentatonic in different octaves — sparse, 3-5 notes
+        const scales = [
+            [220, 261.6, 329.6, 392, 440],    // A3 C4 E4 G4 A4
+            [164.8, 196, 220, 261.6, 329.6],   // E3 G3 A3 C4 E4
+            [130.8, 164.8, 196, 261.6, 392],   // C3 E3 G3 C4 G4
+        ];
+        const scale = scales[Math.floor(Math.random() * scales.length)];
+        const noteCount = 3 + Math.floor(Math.random() * 2); // 3-4 notes
+
+        for (let i = 0; i < noteCount; i++) {
+            const freq = scale[Math.floor(Math.random() * scale.length)];
+            const startTime = now + i * (0.8 + Math.random() * 0.6); // 0.8-1.4s apart
+
+            // Fundamental sine
+            const osc1 = ac.createOscillator();
+            const osc2 = ac.createOscillator();
+            const gain = ac.createGain();
+
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(freq, startTime);
+            // Slight detune for warmth
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(freq * 1.002, startTime);
+
+            osc1.connect(gain);
+            osc2.connect(gain);
+
+            // Route through music gain bus if available
+            if (musicGain) {
+                gain.connect(musicGain);
+            } else {
+                gain.connect(masterGain);
+            }
+
+            // Piano-like envelope: quick attack, fast initial decay, slow release
+            gain.gain.setValueAtTime(0, startTime);
+            gain.gain.linearRampToValueAtTime(0.035, startTime + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.015, startTime + 0.3);
+            gain.gain.exponentialRampToValueAtTime(0.001, startTime + 2.5);
+
+            osc1.start(startTime);
+            osc1.stop(startTime + 2.5);
+            osc2.start(startTime);
+            osc2.stop(startTime + 2.5);
+        }
+    } catch(e) {}
+}
+
+export function stopPianoSequence() {
+    if (pianoSequenceTimer) {
+        clearTimeout(pianoSequenceTimer);
+        pianoSequenceTimer = null;
+    }
+}
 
 export function startAmbient() {
     try {

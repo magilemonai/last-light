@@ -118,12 +118,34 @@ export function renderVignette(ctx, W, H) {
     ctx.fillRect(0, 0, W, H);
 }
 
+// T3: Enhanced wreckage rendering with varied debris shapes
 export function renderWreckage(ctx, wreckage) {
     for (const w of wreckage) {
-        ctx.globalAlpha = 0.3;
+        ctx.save();
+        ctx.translate(w.x, w.y);
+        ctx.rotate(w.rot || 0);
+        ctx.globalAlpha = 0.25;
         ctx.fillStyle = CFG.colors.wreckage;
-        ctx.fillRect(w.x - 4, w.y - 2, 8, 4);
-        ctx.fillRect(w.x - 1, w.y - 6, 2, 8);
+
+        if (w.type === 0) {
+            // Plank — long thin rectangle
+            ctx.fillRect(-w.size, -1, w.size * 2, 2.5);
+        } else if (w.type === 1) {
+            // Beam — thicker, shorter
+            ctx.fillRect(-w.size * 0.6, -2, w.size * 1.2, 4);
+            // Cross brace
+            ctx.fillRect(-1, -w.size * 0.4, 2, w.size * 0.8);
+        } else {
+            // Fragment — irregular polygon
+            ctx.beginPath();
+            ctx.moveTo(-w.size * 0.3, -w.size * 0.4);
+            ctx.lineTo(w.size * 0.5, -w.size * 0.2);
+            ctx.lineTo(w.size * 0.3, w.size * 0.4);
+            ctx.lineTo(-w.size * 0.4, w.size * 0.3);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
     }
     ctx.globalAlpha = 1;
 }

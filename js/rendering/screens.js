@@ -697,5 +697,24 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer, endlessHighScor
         ctx.fillStyle = `rgba(170,152,112,${pa * 0.7})`;
         ctx.font = `${Math.min(12, W * 0.016)}px Georgia, serif`;
         ctx.fillText('Return to title', W / 2, H * 0.95);
+
+        // T3: Save Record button
+        const saveHover = Math.abs(input.my - (paperY + paperH - 15)) < 10
+                       && Math.abs(input.mx - (W / 2 + paperW / 2 - 50)) < 40;
+        ctx.fillStyle = saveHover ? `rgba(255,204,68,${pa + 0.2})` : `rgba(150,140,120,${pa * 0.5})`;
+        ctx.font = `${Math.min(11, W * 0.015)}px Georgia, serif`;
+        ctx.textAlign = 'right';
+        ctx.fillText('Save Record', W / 2 + paperW / 2 - 15, paperY + paperH - 15);
+        ctx.textAlign = 'center';
     }
+}
+
+// T3: Export shareable image of Keeper's Record
+export function saveKeepersRecordImage(canvas) {
+    try {
+        const link = document.createElement('a');
+        link.download = 'last-light-keepers-record.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    } catch(e) {}
 }

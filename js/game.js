@@ -7,12 +7,13 @@ import { input } from './input.js';
 import { GameState, campaign, nightStats, resetNightStats, resetCampaign,
          WHISPER_FRAGMENTS, saveCampaign, loadCampaign, clearSave } from './state.js';
 import { lighthouse, beam, renderLighthouse, lighthouseState, updateLighthouseDamage } from './entities/lighthouse.js';
-import { ships, clearShips, spawnShip, updateShips, renderShips, getActiveShipCount } from './entities/ships.js';
+import { ships, clearShips, spawnShip, updateShips, renderShips, getActiveShipCount, onShipEvent } from './entities/ships.js';
 import { creatures, clearCreatures, spawnCreature, updateCreatures, renderCreatures } from './entities/creatures.js';
 import { ease, noise2d, spawnParticle, updateParticles, renderParticles, clearParticles,
          triggerShake, updateShake, applyShake, addTallyFlash, updateTallyFlashes, renderTallyFlashes } from './utils.js';
 import { playSound, startAmbient, setAmbientGain, updateAmbientForEvent, updateCreatureAudio,
-         startDroneMusic, updateDroneMusic, stopDroneMusic, setMusicVolume, setMasterVolume } from './systems/audio.js';
+         startDroneMusic, updateDroneMusic, stopDroneMusic, setMusicVolume, setMasterVolume,
+         playPianoSequence, stopPianoSequence } from './systems/audio.js';
 import { loadSettings, setSetting, getSettings } from './systems/settings.js';
 import { renderWater, renderHarbor, renderVignette, renderWreckage } from './rendering/water.js';
 import { renderHUD, renderPause, renderCursor, handlePauseClick } from './rendering/hud.js';
@@ -20,7 +21,7 @@ import {
     renderTitle, renderNightIntro, renderDawn,
     renderUpgrade, renderFinaleDark, renderFinaleChoice, renderFinaleEnd, renderKeepersRecord,
     upgradeChoices, upgradeSelected, setUpgradeChoices, setUpgradeSelected,
-    getUpgradeChoices, finaleChoiceHover,
+    getUpgradeChoices, finaleChoiceHover, saveKeepersRecordImage,
 } from './rendering/screens.js';
 
 const canvas = document.getElementById('c');
@@ -58,9 +59,33 @@ let activeEvent = null;
 let finaleTriggered = false;
 let harborGlow = { value: 0.1 };
 let wreckage = [];
+let wreckPositions = []; // T3: Log Book wreck position markers
 let pausedFromState = GameState.PLAYING;
 let endlessMode = false;
 let endlessNightCount = 0;
+
+// T3: Ship event callback for wreckage + arrival effects
+onShipEvent((eventType, ship) => {
+    if (eventType === 'sink') {
+        // Spawn wreckage debris near rocks (bottom of screen near lighthouse)
+        const lx = lighthouse.x;
+        const ly = lighthouse.y;
+        for (let i = 0; i < 3 + Math.floor(Math.random() * 3); i++) {
+            wreckage.push({
+                x: ship.x + (Math.random() - 0.5) * 40,
+                y: ship.y + Math.random() * 20,
+                rot: Math.random() * Math.PI * 2,
+                size: 3 + Math.random() * 5,
+                type: Math.floor(Math.random() * 3), // 0=plank, 1=beam, 2=fragment
+            });
+        }
+        // T3: Track wreck position for Log Book
+        wreckPositions.push({ x: ship.x, y: ship.y, shipType: ship.type });
+    } else if (eventType === 'arrive') {
+        // T3: Harbor glow pulse on arrival
+        harborGlow.value += 0.05; // extra glow boost beyond the base
+    }
+});
 
 // Whisper state
 let activeWhispers = [];
@@ -207,6 +232,7 @@ function startNight() {
     clearCreatures();
     clearParticles();
     wreckage = [];
+    wreckPositions = [];
     beam.reset();
     harborGlow.value = 0.1;
     nightTimer = 0;
@@ -244,12 +270,15 @@ function endNight() {
 
     if (endlessMode) {
         playSound('dawn');
+        playPianoSequence();
         changeState(GameState.ENDLESS_DAWN, 1.5);
         return;
     }
 
     nightNum++;
     playSound('dawn');
+    // T3: Sparse piano between nights
+    playPianoSequence();
     changeState(GameState.DAWN, 1.5);
 
     if (nightNum >= CFG.nights.length) {
@@ -427,6 +456,18 @@ input.onClick(() => {
         }
     } else if (state === GameState.KEEPERS_RECORD) {
         if (stateTimer > 3.0) {
+            // T3: Check if clicking "Save Record" button
+            // Button is near bottom-right of paper
+            const paperW = Math.min(W * 0.8, 600);
+            const paperY = H * 0.1;
+            const paperH = H * 0.8;
+            const saveY = paperY + paperH - 15;
+            const saveX = W / 2 + paperW / 2 - 50;
+            if (Math.abs(input.my - saveY) < 10 && Math.abs(input.mx - saveX) < 40) {
+                saveKeepersRecordImage(canvas);
+                return; // don't navigate away
+            }
+
             // Check if clicking "One More Night" vs "Return"
             const endlessY = H * 0.91;
             const returnY = H * 0.95;
@@ -704,6 +745,29 @@ function renderGameplay() {
                 ctx.stroke();
                 ctx.restore();
             }
+        }
+    }
+
+    // T3: Log Book wreck position markers
+    if (campaign.upgrades.includes('logBook') && wreckPositions.length > 0) {
+        for (const wp of wreckPositions) {
+            ctx.save();
+            ctx.globalAlpha = 0.25 + Math.sin(time * 2) * 0.1;
+            ctx.strokeStyle = '#ff6644';
+            ctx.lineWidth = 1;
+            // Small X mark at wreck position
+            ctx.beginPath();
+            ctx.moveTo(wp.x - 5, wp.y - 5);
+            ctx.lineTo(wp.x + 5, wp.y + 5);
+            ctx.moveTo(wp.x + 5, wp.y - 5);
+            ctx.lineTo(wp.x - 5, wp.y + 5);
+            ctx.stroke();
+            // Subtle label
+            ctx.fillStyle = 'rgba(255,100,60,0.2)';
+            ctx.font = '8px Georgia, serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('wreck', wp.x, wp.y + 12);
+            ctx.restore();
         }
     }
 
