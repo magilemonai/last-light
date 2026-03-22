@@ -329,10 +329,30 @@ export function renderShips(ctx, time, activeEvent, fogHornActive, spyglassActiv
             ctx.fillRect(-1, -s.size * 0.5, 2, s.size * 0.4);
         }
 
-        // T1: Larger lantern with wider glow — always visible
-        const lanternGlow = s.lanternBright * (0.8 + Math.sin(time * 3 + s.bobPhase) * 0.2);
+        // Ship lantern with type-specific flicker pattern
         const isHeavy = s.type !== 'skiff';
         const lanternY = -s.size * (isHeavy ? 0.3 : 0.5);
+
+        // T1: Distinct flicker per ship type
+        let lanternFlicker;
+        if (s.type === 'skiff') {
+            // Fast pulse (3Hz)
+            lanternFlicker = 0.6 + Math.sin(time * 18.85 + s.bobPhase) * 0.4;
+        } else if (s.type === 'merchant') {
+            // Steady, slow breath
+            lanternFlicker = 0.85 + Math.sin(time * 1.5 + s.bobPhase) * 0.15;
+        } else if (s.type === 'passenger') {
+            // Double-blink pattern
+            const t = ((time * 1.2 + s.bobPhase) % 2.0);
+            lanternFlicker = (t < 0.15 || (t > 0.3 && t < 0.45)) ? 1.0 : 0.6;
+        } else if (s.type === 'ghostShip') {
+            // Erratic, cold
+            lanternFlicker = 0.3 + Math.sin(time * 7 + s.bobPhase) * 0.2
+                           + (Math.sin(time * 13 + s.bobPhase * 2) > 0.7 ? 0.3 : 0);
+        } else {
+            lanternFlicker = 0.8;
+        }
+        const lanternGlow = s.lanternBright * lanternFlicker;
 
         if (s.type === 'ghostShip' && s.revealed) {
             ctx.fillStyle = `rgba(100,150,180,${lanternGlow * vis * 0.5})`;
@@ -343,18 +363,28 @@ export function renderShips(ctx, time, activeEvent, fogHornActive, spyglassActiv
             ctx.beginPath();
             ctx.arc(0, lanternY, 15 + lanternGlow * 5, 0, Math.PI * 2);
             ctx.fill();
+        } else if (s.type === 'ghostShip') {
+            // Unrevealed ghost: cold blue-white flicker
+            ctx.fillStyle = `rgba(160,180,200,${Math.max(0.15, lanternGlow * vis * 0.6)})`;
+            ctx.beginPath();
+            ctx.arc(0, lanternY, 2.5 + lanternGlow * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = `rgba(140,170,200,${Math.max(0.04, lanternGlow * vis * 0.1)})`;
+            ctx.beginPath();
+            ctx.arc(0, lanternY, 10 + lanternGlow * 3, 0, Math.PI * 2);
+            ctx.fill();
         } else {
-            // T1: Core lantern — larger
+            // Core lantern — warm, type-specific flicker
             ctx.fillStyle = `rgba(255,180,50,${Math.max(0.3, lanternGlow * vis)})`;
             ctx.beginPath();
             ctx.arc(0, lanternY, 3 + lanternGlow * 0.5, 0, Math.PI * 2);
             ctx.fill();
-            // T1: Inner glow halo — always somewhat visible
+            // Inner glow halo
             ctx.fillStyle = `rgba(255,170,50,${Math.max(0.08, lanternGlow * vis * 0.2)})`;
             ctx.beginPath();
             ctx.arc(0, lanternY, 12 + lanternGlow * 4, 0, Math.PI * 2);
             ctx.fill();
-            // T1: Outer soft glow — visible in darkness
+            // Outer soft glow
             ctx.fillStyle = `rgba(255,160,40,${Math.max(0.03, lanternGlow * vis * 0.05)})`;
             ctx.beginPath();
             ctx.arc(0, lanternY, 25 + lanternGlow * 8, 0, Math.PI * 2);

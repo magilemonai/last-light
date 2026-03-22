@@ -11,9 +11,11 @@ import { ships, clearShips, spawnShip, updateShips, renderShips, getActiveShipCo
 import { creatures, clearCreatures, spawnCreature, updateCreatures, renderCreatures } from './entities/creatures.js';
 import { ease, noise2d, spawnParticle, updateParticles, renderParticles, clearParticles,
          triggerShake, updateShake, applyShake, addTallyFlash, updateTallyFlashes, renderTallyFlashes } from './utils.js';
-import { playSound, startAmbient, setAmbientGain, updateAmbientForEvent, updateCreatureAudio } from './systems/audio.js';
+import { playSound, startAmbient, setAmbientGain, updateAmbientForEvent, updateCreatureAudio,
+         startDroneMusic, updateDroneMusic, stopDroneMusic, setMusicVolume, setMasterVolume } from './systems/audio.js';
+import { loadSettings, setSetting, getSettings } from './systems/settings.js';
 import { renderWater, renderHarbor, renderVignette, renderWreckage } from './rendering/water.js';
-import { renderHUD, renderPause, renderCursor } from './rendering/hud.js';
+import { renderHUD, renderPause, renderCursor, handlePauseClick } from './rendering/hud.js';
 import {
     renderTitle, renderNightIntro, renderDawn,
     renderUpgrade, renderFinaleDark, renderFinaleChoice, renderFinaleEnd, renderKeepersRecord,
@@ -89,6 +91,8 @@ let pauseDebounce = 0;
 input.init(canvas);
 lighthouse.x = W / 2;
 lighthouse.y = H * 0.82;
+const gameSettings = loadSettings();
+let endlessHighScore = parseInt(localStorage.getItem('lastLight_endlessHigh') || '0', 10);
 
 function applyUpgrades() {
     const has = u => campaign.upgrades.includes(u);
@@ -128,24 +132,48 @@ function onStateEnter(s) {
     }
 }
 
-// T3: Endless mode night generator
+// T3: Endless mode night generator with T2 milestones
 function generateEndlessNight(num) {
-    const difficulty = Math.min(num, 20); // caps at 20
-    const events = [null, 'fog', 'storm', 'newMoon', null, 'fog', 'storm'];
+    const difficulty = Math.min(num, 20);
+    const baseEvents = [null, 'fog', 'storm', 'newMoon', null, 'fog', 'storm'];
+
+    // T2: Milestone events every 5 nights
+    let event = baseEvents[num % baseEvents.length];
+    let desc = `Endless Night ${num + 1}. The dark remembers.`;
+    let bonusCreatures = {};
+
+    if ((num + 1) % 5 === 0) {
+        // Milestone night — combined weather + bonus enemies
+        const milestoneNum = Math.floor((num + 1) / 5);
+        if (milestoneNum % 3 === 1) {
+            event = 'fog';
+            desc = `Endless Night ${num + 1}. The fog brings something new.`;
+            bonusCreatures = { mimics: 3, shades: 2 };
+        } else if (milestoneNum % 3 === 2) {
+            event = 'storm';
+            desc = `Endless Night ${num + 1}. The storm never ends.`;
+            bonusCreatures = { abyssals: 2, flinches: 4 };
+        } else {
+            event = 'newMoon';
+            desc = `Endless Night ${num + 1}. Blood moon.`;
+            bonusCreatures = { shades: 4, lurkers: 5 };
+        }
+    }
+
     return {
         skiffs: 4 + Math.floor(difficulty * 0.5),
         merchants: 1 + Math.floor(difficulty * 0.3),
         passengers: difficulty > 3 ? Math.floor(difficulty * 0.15) : 0,
         ghostShips: difficulty > 5 ? 1 : 0,
-        lurkers: 3 + Math.floor(difficulty * 0.8),
-        flinches: difficulty > 2 ? Math.floor(difficulty * 0.5) : 0,
-        mimics: difficulty > 4 ? Math.floor(difficulty * 0.3) : 0,
-        abyssals: difficulty > 8 ? Math.floor((difficulty - 8) * 0.3) : 0,
-        shades: difficulty > 6 ? Math.floor((difficulty - 6) * 0.4) : 0,
+        lurkers: 3 + Math.floor(difficulty * 0.8) + (bonusCreatures.lurkers || 0),
+        flinches: (difficulty > 2 ? Math.floor(difficulty * 0.5) : 0) + (bonusCreatures.flinches || 0),
+        mimics: (difficulty > 4 ? Math.floor(difficulty * 0.3) : 0) + (bonusCreatures.mimics || 0),
+        abyssals: (difficulty > 8 ? Math.floor((difficulty - 8) * 0.3) : 0) + (bonusCreatures.abyssals || 0),
+        shades: (difficulty > 6 ? Math.floor((difficulty - 6) * 0.4) : 0) + (bonusCreatures.shades || 0),
         spawnInterval: [Math.max(2, 6 - difficulty * 0.2), Math.max(4, 10 - difficulty * 0.3)],
         duration: 90 + Math.min(difficulty * 3, 40),
-        event: events[num % events.length],
-        desc: `Endless Night ${num + 1}. The dark remembers.`,
+        event,
+        desc,
     };
 }
 
@@ -191,7 +219,11 @@ function startNight() {
     spawnQueue = buildSpawnQueue(cfg);
     spawnTimer = 3;
     startAmbient();
+    startDroneMusic();
     updateAmbientForEvent(activeEvent);
+    // Apply current volume settings
+    setMasterVolume(gameSettings.masterVolume);
+    setMusicVolume(gameSettings.musicVolume);
 }
 
 function endNight() {
@@ -207,6 +239,8 @@ function endNight() {
     if (nightStats.lost > 0 && nightNum >= 7) {
         onWhisperEvent(lighthouse.x + (Math.random() - 0.5) * 100, lighthouse.y - 50);
     }
+
+    stopDroneMusic();
 
     if (endlessMode) {
         playSound('dawn');
@@ -316,6 +350,17 @@ function renderWhispers() {
 
 // ── Click Handler ──
 input.onClick(() => {
+    // T2: Pause menu settings interaction
+    if (state === GameState.PAUSED) {
+        handlePauseClick(input.mx, input.my, gameSettings, (key, value) => {
+            setSetting(key, value);
+            gameSettings[key] = value;
+            if (key === 'masterVolume') setMasterVolume(value);
+            if (key === 'musicVolume') setMusicVolume(value);
+        });
+        return;
+    }
+
     if (state === GameState.TITLE) {
         const hasSave = renderTitle._hoverContinue !== undefined;
 
@@ -375,6 +420,10 @@ input.onClick(() => {
             campaign.finalChoice = 'leave';
             state = GameState.FINALE_END;
             stateTimer = 0;
+        } else if (finaleChoiceHover === 2) {
+            campaign.finalChoice = 'embrace';
+            state = GameState.FINALE_END;
+            stateTimer = 0;
         }
     } else if (state === GameState.KEEPERS_RECORD) {
         if (stateTimer > 3.0) {
@@ -393,6 +442,11 @@ input.onClick(() => {
     } else if (state === GameState.ENDLESS_DAWN) {
         if (stateTimer > 2.0) {
             endlessNightCount++;
+            // T2: Track and save high score
+            if (endlessNightCount > endlessHighScore) {
+                endlessHighScore = endlessNightCount;
+                try { localStorage.setItem('lastLight_endlessHigh', String(endlessHighScore)); } catch(e) {}
+            }
             setUpgradeChoices(getUpgradeChoices(endlessNightCount + 15));
             changeState(GameState.UPGRADE, 0.8);
         }
@@ -447,6 +501,13 @@ function updateGameplay(dt) {
         creatureProximity[c.type] = Math.max(creatureProximity[c.type] || 0, proximity);
     }
     updateCreatureAudio(creatureProximity);
+
+    // T2: Update drone music based on game phase
+    const totalCreatureProximity = Object.values(creatureProximity).reduce((a, b) => a + b, 0);
+    const maxProx = Math.min(1, totalCreatureProximity / 2);
+    const cfg_drone = getNightConfig();
+    const nightDur = cfg_drone ? cfg_drone.duration || CFG.night.duration : CFG.night.duration;
+    updateDroneMusic(nightTimer / nightDur, maxProx, activeEvent === 'deadCalm');
 
     // T3: tinderBox — faster regen when fuel low
     if (campaign.upgrades.includes('tinderBox') && beam.fuelRatio < 0.3) {
@@ -505,9 +566,9 @@ function updateGameplay(dt) {
 
 // ── Gameplay Render ──
 function renderGameplay() {
-    // T4: Apply screen shake
+    // T4: Apply screen shake (respects accessibility setting)
     ctx.save();
-    applyShake(ctx);
+    if (gameSettings.screenShake) applyShake(ctx);
 
     renderWater(ctx, W, H, time);
 
@@ -615,6 +676,37 @@ function renderGameplay() {
     renderWhispers();
     renderVignette(ctx, W, H);
 
+    // T2: High contrast mode — brighten ship/creature indicators
+    if (gameSettings.highContrast) {
+        // Bright outlines around active ships
+        for (const s of ships) {
+            if (s.sinking || s.type === 'ghostShip') continue;
+            ctx.save();
+            ctx.strokeStyle = s.type === 'passenger' ? 'rgba(255,200,100,0.4)' :
+                              s.type === 'merchant' ? 'rgba(255,220,150,0.3)' :
+                              'rgba(255,240,200,0.25)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.size + 4, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+        // Bright outlines around visible creatures
+        for (const c of creatures) {
+            if (c.type === 'mimic' && c.disguised) continue;
+            const ill = beam.isPointIlluminated(c.x, c.y, activeEvent, fogHornActive, spyglassActive);
+            if (ill > 0.15) {
+                ctx.save();
+                ctx.strokeStyle = 'rgba(180,100,220,0.4)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, c.size + 3, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    }
+
     // Night timer urgency glow
     const currentCfg = getNightConfig();
     const nightDuration = currentCfg ? currentCfg.duration || CFG.night.duration : CFG.night.duration;
@@ -695,7 +787,7 @@ function renderState(s) {
             break;
         }
         case GameState.UPGRADE: renderUpgrade(ctx, W, H, time, stateTimer); break;
-        case GameState.KEEPERS_RECORD: renderKeepersRecord(ctx, W, H, time, stateTimer); break;
+        case GameState.KEEPERS_RECORD: renderKeepersRecord(ctx, W, H, time, stateTimer, endlessHighScore); break;
         case GameState.FINALE_DARK: {
             const done = renderFinaleDark(ctx, W, H, stateTimer);
             if (done) {
@@ -707,11 +799,13 @@ function renderState(s) {
         case GameState.FINALE_CHOICE: renderFinaleChoice(ctx, W, H, time, stateTimer); break;
         case GameState.FINALE_END: {
             const result = renderFinaleEnd(ctx, W, H, time, stateTimer, campaign.finalChoice);
-            if (result && campaign.finalChoice === 'relight') {
-                beam.fuel = CFG.beam.fuelMax * 0.5;
+            if (result === 'resume') {
+                // Relight: scale fuel penalty by losses
+                const lossRatio = campaign.totalLost / Math.max(1, campaign.totalSaved + campaign.totalLost);
+                beam.fuel = CFG.beam.fuelMax * Math.max(0.2, 0.6 - lossRatio * 0.4);
                 state = GameState.PLAYING;
                 setAmbientGain(0.04);
-            } else if (result && campaign.finalChoice === 'leave') {
+            } else if (result === 'end') {
                 nightNum = CFG.nights.length;
                 endNight();
             }

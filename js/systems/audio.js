@@ -4,11 +4,13 @@
 
 let audioCtx = null;
 let masterGain = null;
+let musicGain = null;
 let reverbNode = null;
 let reverbGain = null;
 let ambientNode = null;
 let windNode = null;
 let creakNode = null;
+let droneNodes = null;
 
 function getAudio() {
     if (!audioCtx) {
@@ -16,6 +18,11 @@ function getAudio() {
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0.8;
         masterGain.connect(audioCtx.destination);
+
+        // Music bus (separate gain for volume control)
+        musicGain = audioCtx.createGain();
+        musicGain.gain.value = 0.5;
+        musicGain.connect(audioCtx.destination);
 
         // Build convolution reverb (synthetic impulse response)
         buildReverb();
@@ -567,4 +574,110 @@ export function updateCreatureAudio(creaturesByType) {
             }
         }
     } catch(e) {}
+}
+
+// ── T2: Generative Drone Music ──
+// 4 slow sine oscillators with LFO-modulated frequencies, crossfaded by game phase
+
+export function startDroneMusic() {
+    try {
+        const ac = getAudio();
+        if (droneNodes) return;
+
+        // Base frequencies: A minor chord spread across octaves
+        const baseFreqs = [55, 82.5, 110, 165]; // A1, E2, A2, E3
+        const oscs = [];
+        const gains = [];
+        const lfos = [];
+        const lfoGains = [];
+
+        for (let i = 0; i < baseFreqs.length; i++) {
+            const osc = ac.createOscillator();
+            const gain = ac.createGain();
+            const lfo = ac.createOscillator();
+            const lfoGain = ac.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.value = baseFreqs[i];
+
+            // LFO modulates pitch slightly for organic drift
+            lfo.type = 'sine';
+            lfo.frequency.value = 0.05 + i * 0.02; // very slow: 0.05-0.11 Hz
+            lfoGain.gain.value = baseFreqs[i] * 0.008; // ~0.8% pitch drift
+
+            lfo.connect(lfoGain);
+            lfoGain.connect(osc.frequency);
+            osc.connect(gain);
+            gain.gain.value = 0;
+            gain.connect(musicGain);
+
+            osc.start();
+            lfo.start();
+
+            oscs.push(osc);
+            gains.push(gain);
+            lfos.push(lfo);
+            lfoGains.push(lfoGain);
+        }
+
+        droneNodes = { oscs, gains, lfos, lfoGains, baseFreqs };
+    } catch(e) {}
+}
+
+// Update drone based on game phase: nightProgress 0-1, creatureDensity 0-1
+export function updateDroneMusic(nightProgress, creatureDensity, isDeadCalm) {
+    if (!droneNodes || !audioCtx) return;
+    try {
+        const now = audioCtx.currentTime;
+        const { oscs, gains, baseFreqs } = droneNodes;
+
+        if (isDeadCalm) {
+            // Near silence — only the lowest drone, very quiet
+            for (let i = 0; i < gains.length; i++) {
+                const target = i === 0 ? 0.008 : 0;
+                gains[i].gain.linearRampToValueAtTime(target, now + 2.0);
+            }
+            return;
+        }
+
+        for (let i = 0; i < oscs.length; i++) {
+            // Base volume: lower drones always present, higher ones fade in with tension
+            const baseVol = [0.025, 0.015, 0.012, 0.008][i];
+
+            // Creature density adds dissonance: shift frequencies slightly sharp
+            const detune = creatureDensity * 3; // up to 3 Hz sharp
+            oscs[i].frequency.linearRampToValueAtTime(baseFreqs[i] + detune * (i + 1), now + 0.5);
+
+            // Night progress swells mid-range tones
+            const progressBoost = Math.sin(nightProgress * Math.PI) * 0.01; // peaks at midnight
+
+            // Creature density swells upper harmonics
+            const tensionBoost = creatureDensity * [0.005, 0.01, 0.015, 0.02][i];
+
+            const targetVol = baseVol + progressBoost + tensionBoost;
+            gains[i].gain.linearRampToValueAtTime(Math.min(0.06, targetVol), now + 0.3);
+        }
+    } catch(e) {}
+}
+
+export function stopDroneMusic() {
+    if (!droneNodes || !audioCtx) return;
+    try {
+        const now = audioCtx.currentTime;
+        for (const g of droneNodes.gains) {
+            g.gain.linearRampToValueAtTime(0, now + 1.0);
+        }
+    } catch(e) {}
+}
+
+export function setMusicVolume(value) {
+    if (musicGain) {
+        try { musicGain.gain.setValueAtTime(value, audioCtx.currentTime); } catch(e) {}
+    }
+}
+
+export function setMasterVolume(value) {
+    if (masterGain) {
+        try { masterGain.gain.setValueAtTime(value, audioCtx.currentTime); } catch(e) {}
+    }
 }

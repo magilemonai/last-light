@@ -427,12 +427,17 @@ export function renderFinaleChoice(ctx, W, H, time, stateTimer) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    const choice1Y = H * 0.42;
-    const choice2Y = H * 0.56;
+    // T1: Third option gated on whisper collection (12+)
+    const hasWhisperTruth = campaign.whispersCollected.length >= 12;
 
-    const hover1 = Math.abs(input.my - choice1Y) < 20 && Math.abs(input.mx - W / 2) < W * 0.3;
-    const hover2 = Math.abs(input.my - choice2Y) < 20 && Math.abs(input.mx - W / 2) < W * 0.3;
-    finaleChoiceHover = hover1 ? 0 : hover2 ? 1 : -1;
+    const choice1Y = H * 0.38;
+    const choice2Y = H * 0.50;
+    const choice3Y = H * 0.62;
+
+    const hover1 = Math.abs(input.my - choice1Y) < 16 && Math.abs(input.mx - W / 2) < W * 0.3;
+    const hover2 = Math.abs(input.my - choice2Y) < 16 && Math.abs(input.mx - W / 2) < W * 0.3;
+    const hover3 = hasWhisperTruth && Math.abs(input.my - choice3Y) < 16 && Math.abs(input.mx - W / 2) < W * 0.3;
+    finaleChoiceHover = hover1 ? 0 : hover2 ? 1 : hover3 ? 2 : -1;
 
     ctx.fillStyle = hover1 ? '#ffcc44' : 'rgba(255,248,224,0.6)';
     ctx.font = `italic ${Math.min(18, W * 0.025)}px Georgia, serif`;
@@ -441,11 +446,25 @@ export function renderFinaleChoice(ctx, W, H, time, stateTimer) {
     ctx.fillStyle = hover2 ? '#ffcc44' : 'rgba(255,248,224,0.6)';
     ctx.fillText('Leave the lighthouse. Walk down to the shore.', W / 2, choice2Y);
 
+    // Third option — only if whispers collected
+    if (hasWhisperTruth) {
+        ctx.fillStyle = hover3 ? '#9988bb' : 'rgba(130,110,180,0.6)';
+        ctx.font = `italic ${Math.min(18, W * 0.025)}px Georgia, serif`;
+        ctx.fillText('Answer the dark. Speak the words back.', W / 2, choice3Y);
+        // Subtle whisper hint
+        ctx.fillStyle = 'rgba(100,80,140,0.25)';
+        ctx.font = `italic ${Math.min(11, W * 0.015)}px Georgia, serif`;
+        ctx.fillText('You heard enough to understand', W / 2, choice3Y + 20);
+    }
+
     ctx.globalAlpha = 1;
 }
 
 export function renderFinaleEnd(ctx, W, H, time, stateTimer, finalChoice) {
     const fadeIn = Math.min(1, stateTimer / 2.0);
+    const hasKeeperPath = campaign.upgrades.some(u => ['lensPolish','oilReserve','stormShutters','fogHorn'].includes(u));
+    const hasWatcherPath = campaign.upgrades.some(u => ['prismFocus','phosphorOil','wardStone','spyglass'].includes(u));
+    const lossRatio = campaign.totalLost / Math.max(1, campaign.totalSaved + campaign.totalLost);
 
     if (finalChoice === 'relight') {
         if (stateTimer < 2.0) {
@@ -455,12 +474,65 @@ export function renderFinaleEnd(ctx, W, H, time, stateTimer, finalChoice) {
             ctx.fillStyle = '#ffcc44';
             ctx.textAlign = 'center';
             ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
-            ctx.fillText('The light returns.', W / 2, H / 2);
+            // Path-based relight text
+            const relightText = hasWatcherPath && !hasKeeperPath
+                ? 'The beam narrows. It burns brighter than before.'
+                : hasKeeperPath && !hasWatcherPath
+                ? 'The old light returns. Steady. Familiar.'
+                : 'The light returns.';
+            ctx.fillText(relightText, W / 2, H / 2);
+            // Loss-scaled warning
+            if (lossRatio > 0.4) {
+                ctx.fillStyle = 'rgba(255,100,80,0.4)';
+                ctx.font = `italic ${Math.min(12, W * 0.016)}px Georgia, serif`;
+                ctx.fillText('But the flame is guttering.', W / 2, H / 2 + 25);
+            }
             ctx.globalAlpha = 1;
             return false;
         }
-        return true; // signal to resume gameplay
+        return 'resume';
+    } else if (finalChoice === 'embrace') {
+        // T1: Third ending — spoke the words back
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+
+        // Expanding purple glow from lighthouse
+        const expand = Math.min(1, stateTimer / 4.0);
+        const glowR = expand * Math.max(W, H) * 0.6;
+        const grad = ctx.createRadialGradient(W / 2, H * 0.3, 5, W / 2, H * 0.3, glowR);
+        grad.addColorStop(0, `rgba(100,60,140,${0.3 * (1 - expand * 0.5)})`);
+        grad.addColorStop(1, 'rgba(100,60,140,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+
+        if (stateTimer > 2.0) {
+            const textAlpha = Math.min(1, (stateTimer - 2.0) / 2.0);
+            ctx.globalAlpha = textAlpha;
+            ctx.fillStyle = '#9988bb';
+            ctx.textAlign = 'center';
+            ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
+            ctx.fillText('You speak into the dark. The dark answers.', W / 2, H * 0.45);
+        }
+        if (stateTimer > 4.0) {
+            const textAlpha = Math.min(1, (stateTimer - 4.0) / 2.0);
+            ctx.globalAlpha = textAlpha;
+            ctx.fillStyle = '#bbaadd';
+            ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
+            ctx.fillText('The bargain is remade. The light changes.', W / 2, H * 0.55);
+            ctx.fillText('You are the keeper, and the kept.', W / 2, H * 0.60);
+        }
+        if (stateTimer > 7.0) {
+            const textAlpha = Math.min(1, (stateTimer - 7.0) / 1.5);
+            ctx.globalAlpha = textAlpha;
+            ctx.fillStyle = '#fff8e0';
+            ctx.font = `${Math.min(14, W * 0.02)}px Georgia, serif`;
+            ctx.fillText('The beam burns violet at the edges now.', W / 2, H * 0.72);
+        }
+        ctx.globalAlpha = 1;
+
+        return stateTimer > 10.0 ? 'end' : false;
     } else {
+        // "Leave" ending
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, W, H);
         const lightSize = Math.max(1, 8 - stateTimer * 0.8);
@@ -480,17 +552,26 @@ export function renderFinaleEnd(ctx, W, H, time, stateTimer, finalChoice) {
             ctx.fillStyle = '#aaa8a0';
             ctx.textAlign = 'center';
             ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
-            ctx.fillText('The sound of waves on stone. The cold air on your face.', W / 2, H * 0.6);
-            ctx.fillText('Behind you, the beam is dark.', W / 2, H * 0.65);
+            // Path-based leave text
+            if (hasWatcherPath && !hasKeeperPath) {
+                ctx.fillText('You saw too much. The dark showed you things the light never could.', W / 2, H * 0.6);
+                ctx.fillText('You take the spyglass. You do not look back.', W / 2, H * 0.65);
+            } else if (hasKeeperPath && !hasWatcherPath) {
+                ctx.fillText('The sound of waves on stone. The cold air on your face.', W / 2, H * 0.6);
+                ctx.fillText('You leave the oil burning. Someone else will tend it.', W / 2, H * 0.65);
+            } else {
+                ctx.fillText('The sound of waves on stone. The cold air on your face.', W / 2, H * 0.6);
+                ctx.fillText('Behind you, the beam is dark.', W / 2, H * 0.65);
+            }
             ctx.globalAlpha = 1;
         }
 
-        return stateTimer > 8.0; // signal to end
+        return stateTimer > 8.0 ? 'end' : false;
     }
 }
 
 // ── Keeper's Record ──
-export function renderKeepersRecord(ctx, W, H, time, stateTimer) {
+export function renderKeepersRecord(ctx, W, H, time, stateTimer, endlessHighScore) {
     ctx.fillStyle = '#1a1610';
     ctx.fillRect(0, 0, W, H);
 
@@ -579,7 +660,9 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer) {
     ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
     const ratio = campaign.totalSaved / Math.max(1, campaign.totalSaved + campaign.totalLost);
     let finalLine;
-    if (campaign.finalChoice === 'relight') {
+    if (campaign.finalChoice === 'embrace') {
+        finalLine = 'The bargain was remade. The light burns a different color now.';
+    } else if (campaign.finalChoice === 'relight') {
         finalLine = ratio > 0.7 ? 'The light held. The coast remembers.' :
                     ratio > 0.4 ? 'The light held, though the cost was heavy.' :
                     'The light held. But the dark took its share.';
@@ -597,6 +680,13 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer) {
 
     if (stateTimer > 3.0) {
         const pa = 0.3 + Math.sin(time * 3) * 0.2;
+
+        // T2: Endless high score
+        if (endlessHighScore > 0) {
+            ctx.fillStyle = 'rgba(150,140,120,0.3)';
+            ctx.font = `${Math.min(11, W * 0.015)}px Georgia, serif`;
+            ctx.fillText(`Endless record: ${endlessHighScore} night${endlessHighScore !== 1 ? 's' : ''}`, W / 2, H * 0.86);
+        }
 
         // T3: "One More Night" endless mode option
         const endlessHover = Math.abs(input.my - H * 0.91) < 12 && Math.abs(input.mx - W / 2) < W * 0.2;

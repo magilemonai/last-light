@@ -47,8 +47,9 @@ export function spawnCreature(type) {
         mimicRevealed: false,
         abyssalSoundTimer: type === 'abyssal' ? 3 : 0,
         reachedLighthouse: false,
-        // T2: Track if lured by ghost ship
         luredByGhost: false,
+        // T1: Mimic behavioral tell — stutter timer
+        mimicStutterTimer: type === 'mimic' ? 1.5 + Math.random() * 2 : 0,
     });
 }
 
@@ -246,10 +247,15 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
                 }
             }
             if (c.disguised) {
+                // T1: Mimic behavioral tell — stutter pause every ~2s
+                c.mimicStutterTimer -= dt;
+                const stuttering = c.mimicStutterTimer > 0 && c.mimicStutterTimer < 0.3;
+                if (c.mimicStutterTimer <= 0) c.mimicStutterTimer = 1.5 + Math.random() * 2;
+
                 const dx = lighthouse.x + (Math.sin(c.phase * 0.2) * 100) - c.x;
                 const dy = lighthouse.y - 50 - c.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist > 0) {
+                if (dist > 0 && !stuttering) {
                     c.x += (dx / dist) * c.speed * 0.7 * dt;
                     c.y += (dy / dist) * c.speed * 0.7 * dt;
                 }
@@ -409,11 +415,14 @@ export function renderCreatures(ctx, time, activeEvent, fogHornActive, spyglassA
         const ill = beam.isPointIlluminated(c.x, c.y, activeEvent, fogHornActive, spyglassActive);
         const undulate = Math.sin(c.phase) * 3;
 
-        // ── MIMIC disguised ──
+        // ── MIMIC disguised — T1: faster bobbing + stutter freeze ──
         if (c.type === 'mimic' && c.disguised) {
             const vis = Math.max(0.08, ill * 0.7 + 0.15);
+            // 1.7x bob speed vs real ships (2.0), with stutter freeze
+            const stuttering = c.mimicStutterTimer > 0 && c.mimicStutterTimer < 0.3;
+            const mimicBob = stuttering ? 0 : Math.sin(c.phase * 1.36) * 2.5;
             ctx.save();
-            ctx.translate(c.x, c.y + Math.sin(c.phase * 0.8) * 2);
+            ctx.translate(c.x, c.y + mimicBob);
             ctx.globalAlpha = vis;
             ctx.fillStyle = `rgba(90,80,60,${vis})`;
             ctx.beginPath();

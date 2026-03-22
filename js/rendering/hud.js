@@ -7,6 +7,7 @@ import { beam } from '../entities/lighthouse.js';
 import { input } from '../input.js';
 import { campaign } from '../state.js';
 import { ships } from '../entities/ships.js';
+import { getSettings } from '../systems/settings.js';
 
 export function renderHUD(ctx, W, H, time, nightNum, nightTimer, nightStats, fogHornCooldown, fogHornActive, spyglassCooldown, spyglassActive) {
     const cfg = CFG.nights[nightNum];
@@ -110,8 +111,12 @@ export function renderHUD(ctx, W, H, time, nightNum, nightTimer, nightStats, fog
     }
 }
 
-// T1: Pause overlay
+// T1: Pause overlay with T2: accessibility settings
+// pauseMenuState tracks which setting is hovered
+export let pauseMenuAction = null; // set by click handler in game.js
+
 export function renderPause(ctx, W, H, time) {
+    const s = getSettings();
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(0, 0, W, H);
 
@@ -120,23 +125,96 @@ export function renderPause(ctx, W, H, time) {
 
     ctx.fillStyle = '#ffcc44';
     ctx.font = `bold ${Math.min(36, W * 0.05)}px Georgia, serif`;
-    ctx.fillText('PAUSED', W / 2, H * 0.42);
+    ctx.fillText('PAUSED', W / 2, H * 0.30);
 
     const promptAlpha = 0.4 + Math.sin(time * 2) * 0.2;
     ctx.fillStyle = `rgba(255,248,224,${promptAlpha})`;
     ctx.font = `${Math.min(14, W * 0.02)}px Georgia, serif`;
-    ctx.fillText('Press Escape to resume', W / 2, H * 0.52);
+    ctx.fillText('Press Escape to resume', W / 2, H * 0.38);
 
     // Controls reminder
     ctx.fillStyle = 'rgba(180,170,150,0.3)';
     ctx.font = `${Math.min(12, W * 0.016)}px Georgia, serif`;
-    const controls = [
-        'Mouse — aim beam',
-        'Space — focus beam (uses fuel)',
-    ];
-    controls.forEach((line, i) => {
-        ctx.fillText(line, W / 2, H * 0.62 + i * 18);
-    });
+    ctx.fillText('Mouse \u2014 aim beam    Space \u2014 focus beam', W / 2, H * 0.45);
+
+    // ── T2: Accessibility Settings ──
+    const settingsX = W / 2;
+    const settingsY = H * 0.55;
+    const lineH = 28;
+    const small = Math.min(13, W * 0.018);
+    ctx.font = `${small}px Georgia, serif`;
+
+    // Master Volume
+    const volY = settingsY;
+    const volBarX = settingsX - 50;
+    const volBarW = 100;
+    ctx.fillStyle = 'rgba(180,170,150,0.4)';
+    ctx.textAlign = 'right';
+    ctx.fillText('Volume', volBarX - 10, volY);
+    // Bar background
+    ctx.fillStyle = 'rgba(255,248,224,0.1)';
+    ctx.fillRect(volBarX, volY - 4, volBarW, 8);
+    // Bar fill
+    ctx.fillStyle = 'rgba(255,204,68,0.5)';
+    ctx.fillRect(volBarX, volY - 4, volBarW * s.masterVolume, 8);
+    // Clickable region stored for game.js
+    renderPause._volBar = { x: volBarX, y: volY - 8, w: volBarW, h: 16 };
+
+    // Music Volume
+    const musY = settingsY + lineH;
+    ctx.fillStyle = 'rgba(180,170,150,0.4)';
+    ctx.fillText('Music', volBarX - 10, musY);
+    ctx.fillStyle = 'rgba(255,248,224,0.1)';
+    ctx.fillRect(volBarX, musY - 4, volBarW, 8);
+    ctx.fillStyle = 'rgba(200,180,255,0.4)';
+    ctx.fillRect(volBarX, musY - 4, volBarW * s.musicVolume, 8);
+    renderPause._musBar = { x: volBarX, y: musY - 8, w: volBarW, h: 16 };
+
+    // Screen Shake toggle
+    const shakeY = settingsY + lineH * 2;
+    const shakeHover = Math.abs(input.my - shakeY) < 10 && Math.abs(input.mx - settingsX) < 80;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = shakeHover ? '#ffcc44' : 'rgba(180,170,150,0.4)';
+    ctx.fillText(`Screen Shake: ${s.screenShake ? 'ON' : 'OFF'}`, settingsX, shakeY);
+    renderPause._shakeY = shakeY;
+
+    // High Contrast toggle
+    const contrastY = settingsY + lineH * 3;
+    const contrastHover = Math.abs(input.my - contrastY) < 10 && Math.abs(input.mx - settingsX) < 80;
+    ctx.fillStyle = contrastHover ? '#ffcc44' : 'rgba(180,170,150,0.4)';
+    ctx.fillText(`High Contrast: ${s.highContrast ? 'ON' : 'OFF'}`, settingsX, contrastY);
+    renderPause._contrastY = contrastY;
+
+    ctx.textAlign = 'center';
+}
+
+// Check if a click in the pause menu hits a setting control
+export function handlePauseClick(mx, my, settings, onSettingChanged) {
+    // Volume bar
+    const vb = renderPause._volBar;
+    if (vb && my >= vb.y && my <= vb.y + vb.h && mx >= vb.x && mx <= vb.x + vb.w) {
+        const val = Math.max(0, Math.min(1, (mx - vb.x) / vb.w));
+        onSettingChanged('masterVolume', Math.round(val * 20) / 20);
+        return true;
+    }
+    // Music bar
+    const mb = renderPause._musBar;
+    if (mb && my >= mb.y && my <= mb.y + mb.h && mx >= mb.x && mx <= mb.x + mb.w) {
+        const val = Math.max(0, Math.min(1, (mx - mb.x) / mb.w));
+        onSettingChanged('musicVolume', Math.round(val * 20) / 20);
+        return true;
+    }
+    // Shake toggle
+    if (renderPause._shakeY && Math.abs(my - renderPause._shakeY) < 10) {
+        onSettingChanged('screenShake', !settings.screenShake);
+        return true;
+    }
+    // Contrast toggle
+    if (renderPause._contrastY && Math.abs(my - renderPause._contrastY) < 10) {
+        onSettingChanged('highContrast', !settings.highContrast);
+        return true;
+    }
+    return false;
 }
 
 // Custom cursor
