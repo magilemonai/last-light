@@ -126,11 +126,11 @@ export const CFG = {
             spawnInterval: [3, 6], duration: 105, event: 'newMoon',
             desc: "No moon tonight. Only the beam.",
         },
-        { // Night 11: Abyssals introduced
+        { // Night 11: Abyssals introduced + Red Tide
             skiffs: 6, merchants: 3, passengers: 1, ghostShips: 0,
             lurkers: 8, flinches: 4, mimics: 2, abyssals: 1, shades: 0,
-            spawnInterval: [3, 6], duration: 110,
-            desc: "Something vast moves beneath.",
+            spawnInterval: [3, 6], duration: 110, event: 'redTide',
+            desc: "The water glows. Something vast moves beneath.",
         },
         { // Night 12: Shades + fog
             skiffs: 7, merchants: 3, passengers: 0, ghostShips: 0,

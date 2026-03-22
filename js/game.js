@@ -67,16 +67,17 @@ let endlessNightCount = 0;
 // T3: Ship event callback for wreckage + arrival effects
 onShipEvent((eventType, ship) => {
     if (eventType === 'sink') {
-        // Spawn wreckage debris near rocks (bottom of screen near lighthouse)
+        // Spawn wreckage near rocks at lighthouse base, offset to sides
         const lx = lighthouse.x;
         const ly = lighthouse.y;
+        const side = ship.x < lx ? -1 : 1; // wreckage drifts to the side the ship was on
         for (let i = 0; i < 3 + Math.floor(Math.random() * 3); i++) {
             wreckage.push({
-                x: ship.x + (Math.random() - 0.5) * 40,
-                y: ship.y + Math.random() * 20,
+                x: lx + side * (40 + Math.random() * 60) + (Math.random() - 0.5) * 20,
+                y: ly + 5 + Math.random() * 15,
                 rot: Math.random() * Math.PI * 2,
                 size: 3 + Math.random() * 5,
-                type: Math.floor(Math.random() * 3), // 0=plank, 1=beam, 2=fragment
+                type: Math.floor(Math.random() * 3),
             });
         }
         // T3: Track wreck position for Log Book
@@ -119,27 +120,36 @@ lighthouse.y = H * 0.82;
 const gameSettings = loadSettings();
 let endlessHighScore = parseInt(localStorage.getItem('lastLight_endlessHigh') || '0', 10);
 
+function resetConfig() {
+    CFG.beam.coneAngle = 0.38;
+    CFG.beam.coneLength = 0.82;
+    CFG.beam.fuelMax = 100;
+    CFG.beam.overdriveDrain = 30;
+    CFG.creatures.shadeSpeed = 25;
+    CFG.creatures.lurkerFleeSpeed = 80;
+}
+
 function applyUpgrades() {
+    // Always reset to defaults first to prevent leaks across runs
+    resetConfig();
+
     const has = u => campaign.upgrades.includes(u);
     const count = u => campaign.upgrades.filter(x => x === u).length;
 
     // Keeper's path
-    CFG.beam.coneAngle = 0.38 * (1 + count('lensPolish') * 0.1);
-    CFG.beam.fuelMax = 100 * (1 + count('oilReserve') * 0.15);
-    CFG.creatures.shadeSpeed = 25 * Math.pow(0.7, count('stormShutters'));
+    CFG.beam.coneAngle *= (1 + count('lensPolish') * 0.1);
+    CFG.beam.fuelMax *= (1 + count('oilReserve') * 0.15);
+    CFG.creatures.shadeSpeed *= Math.pow(0.7, count('stormShutters'));
 
     // Watcher's path
     if (has('prismFocus')) {
         CFG.beam.coneAngle *= (1 - count('prismFocus') * 0.2);
-        CFG.beam.coneLength = 0.82 * (1 + count('prismFocus') * 0.3);
-    } else {
-        CFG.beam.coneLength = 0.82;
+        CFG.beam.coneLength *= (1 + count('prismFocus') * 0.3);
     }
-    CFG.beam.overdriveDrain = has('phosphorOil') ? 30 * 0.6 : 30;
-    CFG.creatures.lurkerFleeSpeed = has('wardStone') ? 80 * 1.5 : 80;
+    if (has('phosphorOil')) CFG.beam.overdriveDrain *= 0.6;
+    if (has('wardStone')) CFG.creatures.lurkerFleeSpeed *= 1.5;
 
-    // Neutral
-    // tinderBox handled in beam update via campaign check
+    // Neutral — tinderBox handled in beam update via campaign check
 }
 
 function changeState(to, duration = 0.8) {
@@ -160,7 +170,7 @@ function onStateEnter(s) {
 // T3: Endless mode night generator with T2 milestones
 function generateEndlessNight(num) {
     const difficulty = Math.min(num, 20);
-    const baseEvents = [null, 'fog', 'storm', 'newMoon', null, 'fog', 'storm'];
+    const baseEvents = [null, 'fog', 'storm', 'newMoon', null, 'redTide', 'storm'];
 
     // T2: Milestone events every 5 nights
     let event = baseEvents[num % baseEvents.length];
@@ -220,8 +230,17 @@ function buildSpawnQueue(nightCfg) {
     return q;
 }
 
+let cachedEndlessConfig = null;
+let cachedEndlessNum = -1;
+
 function getNightConfig() {
-    if (endlessMode) return generateEndlessNight(endlessNightCount);
+    if (endlessMode) {
+        if (cachedEndlessNum !== endlessNightCount) {
+            cachedEndlessConfig = generateEndlessNight(endlessNightCount);
+            cachedEndlessNum = endlessNightCount;
+        }
+        return cachedEndlessConfig;
+    }
     return CFG.nights[nightNum];
 }
 
@@ -408,9 +427,7 @@ input.onClick(() => {
             // New game
             nightNum = 0;
             resetCampaign();
-            CFG.beam.coneAngle = 0.38;
-            CFG.beam.fuelMax = 100;
-            CFG.creatures.shadeSpeed = 25;
+            resetConfig();
             clearSave();
             changeState(GameState.NIGHT_INTRO, 1.0);
         }
@@ -595,13 +612,13 @@ function updateGameplay(dt) {
         return;
     }
 
-    // Night end
-    const activeShips = ships.filter(s => s.type !== 'ghostShip');
-    if (spawnQueue.length === 0 && activeShips.length === 0 && nightTimer > 10) {
+    // Night end — guard against double-call; filter out sinking ships
+    const activeShips = ships.filter(s => s.type !== 'ghostShip' && !s.sinking);
+    const nightOver = nightTimer >= nightDuration;
+    const allDone = spawnQueue.length === 0 && activeShips.length === 0 && nightTimer > 10;
+    if (nightOver || allDone) {
         endNight();
-    }
-    if (nightTimer >= nightDuration) {
-        endNight();
+        return;
     }
 }
 
@@ -715,11 +732,9 @@ function renderGameplay() {
     renderLighthouse(ctx, time);
     renderParticles(ctx);
     renderWhispers();
-    renderVignette(ctx, W, H);
 
-    // T2: High contrast mode — brighten ship/creature indicators
+    // High contrast outlines — rendered BEFORE vignette so edges aren't dimmed
     if (gameSettings.highContrast) {
-        // Bright outlines around active ships
         for (const s of ships) {
             if (s.sinking || s.type === 'ghostShip') continue;
             ctx.save();
@@ -732,7 +747,6 @@ function renderGameplay() {
             ctx.stroke();
             ctx.restore();
         }
-        // Bright outlines around visible creatures
         for (const c of creatures) {
             if (c.type === 'mimic' && c.disguised) continue;
             const ill = beam.isPointIlluminated(c.x, c.y, activeEvent, fogHornActive, spyglassActive);
@@ -747,6 +761,8 @@ function renderGameplay() {
             }
         }
     }
+
+    renderVignette(ctx, W, H);
 
     // T3: Log Book wreck position markers
     if (campaign.upgrades.includes('logBook') && wreckPositions.length > 0) {
