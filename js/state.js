@@ -14,6 +14,7 @@ export const GameState = {
     FINALE_END: 8,
     KEEPERS_RECORD: 9,
     PAUSED: 10,
+    ENDLESS_DAWN: 11,
 };
 
 export const campaign = {

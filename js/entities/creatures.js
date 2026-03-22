@@ -6,7 +6,7 @@ import { CFG } from '../config.js';
 import { lighthouse, beam, setLighthouseDamage } from './lighthouse.js';
 import { ships } from './ships.js';
 import { nightStats } from '../state.js';
-import { spawnParticle } from '../utils.js';
+import { spawnParticle, triggerShake } from '../utils.js';
 import { playSound } from '../systems/audio.js';
 
 export let creatures = [];
@@ -100,6 +100,7 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
                 setLighthouseDamage(0.4, CFG.creatures.shadeDamageTime);
                 c.alive = false;
                 playSound('shadeHit');
+                triggerShake(12); // T4: heavy screen shake
                 for (let i = 0; i < 10; i++) {
                     spawnParticle(lighthouse.x, lighthouse.y, {
                         speed: 15 + Math.random() * 30,

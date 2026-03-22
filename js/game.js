@@ -9,8 +9,9 @@ import { GameState, campaign, nightStats, resetNightStats, resetCampaign,
 import { lighthouse, beam, renderLighthouse, lighthouseState, updateLighthouseDamage } from './entities/lighthouse.js';
 import { ships, clearShips, spawnShip, updateShips, renderShips, getActiveShipCount } from './entities/ships.js';
 import { creatures, clearCreatures, spawnCreature, updateCreatures, renderCreatures } from './entities/creatures.js';
-import { ease, noise2d, spawnParticle, updateParticles, renderParticles, clearParticles } from './utils.js';
-import { playSound, startAmbient, setAmbientGain, updateAmbientForEvent } from './systems/audio.js';
+import { ease, noise2d, spawnParticle, updateParticles, renderParticles, clearParticles,
+         triggerShake, updateShake, applyShake, addTallyFlash, updateTallyFlashes, renderTallyFlashes } from './utils.js';
+import { playSound, startAmbient, setAmbientGain, updateAmbientForEvent, updateCreatureAudio } from './systems/audio.js';
 import { renderWater, renderHarbor, renderVignette, renderWreckage } from './rendering/water.js';
 import { renderHUD, renderPause, renderCursor } from './rendering/hud.js';
 import {
@@ -56,6 +57,8 @@ let finaleTriggered = false;
 let harborGlow = { value: 0.1 };
 let wreckage = [];
 let pausedFromState = GameState.PLAYING;
+let endlessMode = false;
+let endlessNightCount = 0;
 
 // Whisper state
 let activeWhispers = [];
@@ -88,12 +91,26 @@ lighthouse.x = W / 2;
 lighthouse.y = H * 0.82;
 
 function applyUpgrades() {
-    let lensCount = campaign.upgrades.filter(u => u === 'lensPolish').length;
-    let oilCount = campaign.upgrades.filter(u => u === 'oilReserve').length;
-    let shutterCount = campaign.upgrades.filter(u => u === 'stormShutters').length;
-    CFG.beam.coneAngle = 0.38 * (1 + lensCount * 0.1);
-    CFG.beam.fuelMax = 100 * (1 + oilCount * 0.15);
-    CFG.creatures.shadeSpeed = 25 * Math.pow(0.7, shutterCount);
+    const has = u => campaign.upgrades.includes(u);
+    const count = u => campaign.upgrades.filter(x => x === u).length;
+
+    // Keeper's path
+    CFG.beam.coneAngle = 0.38 * (1 + count('lensPolish') * 0.1);
+    CFG.beam.fuelMax = 100 * (1 + count('oilReserve') * 0.15);
+    CFG.creatures.shadeSpeed = 25 * Math.pow(0.7, count('stormShutters'));
+
+    // Watcher's path
+    if (has('prismFocus')) {
+        CFG.beam.coneAngle *= (1 - count('prismFocus') * 0.2);
+        CFG.beam.coneLength = 0.82 * (1 + count('prismFocus') * 0.3);
+    } else {
+        CFG.beam.coneLength = 0.82;
+    }
+    CFG.beam.overdriveDrain = has('phosphorOil') ? 30 * 0.6 : 30;
+    CFG.creatures.lurkerFleeSpeed = has('wardStone') ? 80 * 1.5 : 80;
+
+    // Neutral
+    // tinderBox handled in beam update via campaign check
 }
 
 function changeState(to, duration = 0.8) {
@@ -109,6 +126,27 @@ function onStateEnter(s) {
     if (s === GameState.NIGHT_INTRO) {
         startNight();
     }
+}
+
+// T3: Endless mode night generator
+function generateEndlessNight(num) {
+    const difficulty = Math.min(num, 20); // caps at 20
+    const events = [null, 'fog', 'storm', 'newMoon', null, 'fog', 'storm'];
+    return {
+        skiffs: 4 + Math.floor(difficulty * 0.5),
+        merchants: 1 + Math.floor(difficulty * 0.3),
+        passengers: difficulty > 3 ? Math.floor(difficulty * 0.15) : 0,
+        ghostShips: difficulty > 5 ? 1 : 0,
+        lurkers: 3 + Math.floor(difficulty * 0.8),
+        flinches: difficulty > 2 ? Math.floor(difficulty * 0.5) : 0,
+        mimics: difficulty > 4 ? Math.floor(difficulty * 0.3) : 0,
+        abyssals: difficulty > 8 ? Math.floor((difficulty - 8) * 0.3) : 0,
+        shades: difficulty > 6 ? Math.floor((difficulty - 6) * 0.4) : 0,
+        spawnInterval: [Math.max(2, 6 - difficulty * 0.2), Math.max(4, 10 - difficulty * 0.3)],
+        duration: 90 + Math.min(difficulty * 3, 40),
+        event: events[num % events.length],
+        desc: `Endless Night ${num + 1}. The dark remembers.`,
+    };
 }
 
 function buildSpawnQueue(nightCfg) {
@@ -129,8 +167,14 @@ function buildSpawnQueue(nightCfg) {
     return q;
 }
 
+function getNightConfig() {
+    if (endlessMode) return generateEndlessNight(endlessNightCount);
+    return CFG.nights[nightNum];
+}
+
 function startNight() {
-    const cfg = CFG.nights[nightNum];
+    const cfg = getNightConfig();
+    if (!cfg) return;
     clearShips();
     clearCreatures();
     clearParticles();
@@ -158,6 +202,18 @@ function endNight() {
     };
     campaign.totalSaved += nightStats.saved;
     campaign.totalLost += nightStats.lost;
+
+    // T3: Whisper on ship loss events
+    if (nightStats.lost > 0 && nightNum >= 7) {
+        onWhisperEvent(lighthouse.x + (Math.random() - 0.5) * 100, lighthouse.y - 50);
+    }
+
+    if (endlessMode) {
+        playSound('dawn');
+        changeState(GameState.ENDLESS_DAWN, 1.5);
+        return;
+    }
+
     nightNum++;
     playSound('dawn');
     changeState(GameState.DAWN, 1.5);
@@ -169,10 +225,33 @@ function endNight() {
     }
 }
 
+// T3: Whisper event triggers
+let whisperEventCooldown = 0;
+
+export function onWhisperEvent(eventX, eventY) {
+    if (nightNum < 7 || whisperEventCooldown > 0) return;
+    if (whisperNextIndex >= WHISPER_FRAGMENTS.length) return;
+    if (activeWhispers.length >= 3) return;
+
+    whisperEventCooldown = 8; // cooldown between event-triggered whispers
+    activeWhispers.push({
+        x: eventX + (Math.random() - 0.5) * 60,
+        y: eventY + (Math.random() - 0.5) * 30,
+        text: WHISPER_FRAGMENTS[whisperNextIndex],
+        life: 6.0,
+        maxLife: 6.0,
+        collected: false,
+        index: whisperNextIndex,
+    });
+    whisperNextIndex++;
+}
+
 // ── Whisper System ──
 function updateWhispers(dt) {
     if (nightNum < 7) return;
+    if (whisperEventCooldown > 0) whisperEventCooldown -= dt;
 
+    // Random ambient whispers (original mechanic, boosted rate)
     if (whisperNextIndex < WHISPER_FRAGMENTS.length && Math.random() < 0.008) {
         const checkDist = beam.getLength(activeEvent) * (0.3 + Math.random() * 0.5);
         const checkX = lighthouse.lightX + Math.cos(beam.angle) * checkDist;
@@ -299,7 +378,23 @@ input.onClick(() => {
         }
     } else if (state === GameState.KEEPERS_RECORD) {
         if (stateTimer > 3.0) {
-            changeState(GameState.TITLE, 2.0);
+            // Check if clicking "One More Night" vs "Return"
+            const endlessY = H * 0.91;
+            const returnY = H * 0.95;
+            if (Math.abs(input.my - endlessY) < 12 && Math.abs(input.mx - W / 2) < W * 0.2) {
+                // T3: Enter endless mode
+                endlessMode = true;
+                endlessNightCount = 0;
+                changeState(GameState.NIGHT_INTRO, 1.0);
+            } else {
+                changeState(GameState.TITLE, 2.0);
+            }
+        }
+    } else if (state === GameState.ENDLESS_DAWN) {
+        if (stateTimer > 2.0) {
+            endlessNightCount++;
+            setUpgradeChoices(getUpgradeChoices(endlessNightCount + 15));
+            changeState(GameState.UPGRADE, 0.8);
         }
     }
 });
@@ -329,11 +424,34 @@ function updateGameplay(dt) {
     nightTimer += dt;
     beam.update(dt, time, activeEvent, fogHornActive, spyglassActive);
     updateShips(dt, time, activeEvent, harborGlow, fogHornActive, spyglassActive);
+    const repelsBefore = nightStats.creaturesRepelled;
     updateCreatures(dt, time, activeEvent, fogHornActive, spyglassActive);
+    // T3: Whisper on creature repels
+    if (nightStats.creaturesRepelled > repelsBefore && nightNum >= 7 && Math.random() < 0.3) {
+        const repelledC = creatures.find(c => c.fleeing);
+        if (repelledC) onWhisperEvent(repelledC.x, repelledC.y);
+    }
     updateParticles(dt);
+    updateShake(dt);
+    updateTallyFlashes(dt);
     updateAmbient(dt);
     updateWhispers(dt);
     updateLighthouseDamage(dt);
+
+    // T3: Creature proximity audio
+    const creatureProximity = {};
+    for (const c of creatures) {
+        const dist = Math.sqrt((c.x - lighthouse.x) ** 2 + (c.y - lighthouse.y) ** 2);
+        const maxDist = Math.max(W, H) * 0.6;
+        const proximity = Math.max(0, 1 - dist / maxDist);
+        creatureProximity[c.type] = Math.max(creatureProximity[c.type] || 0, proximity);
+    }
+    updateCreatureAudio(creatureProximity);
+
+    // T3: tinderBox — faster regen when fuel low
+    if (campaign.upgrades.includes('tinderBox') && beam.fuelRatio < 0.3) {
+        beam.fuel += CFG.beam.fuelRegen * 0.5 * dt; // +50% regen below 30%
+    }
 
     // Ability cooldowns
     if (fogHornCooldown > 0) fogHornCooldown -= dt;
@@ -352,7 +470,7 @@ function updateGameplay(dt) {
     }
 
     // Spawn logic
-    const cfg = CFG.nights[nightNum];
+    const cfg = getNightConfig();
     if (spawnQueue.length > 0) {
         spawnTimer -= dt;
         if (spawnTimer <= 0) {
@@ -387,22 +505,60 @@ function updateGameplay(dt) {
 
 // ── Gameplay Render ──
 function renderGameplay() {
+    // T4: Apply screen shake
+    ctx.save();
+    applyShake(ctx);
+
     renderWater(ctx, W, H, time);
 
-    // Environmental overlays
+    // T3: Dynamic weather visuals
     if (activeEvent === 'fog') {
-        // Fog: layered particle fog
-        const fogGrad = ctx.createRadialGradient(W * 0.3, H * 0.3, 50, W * 0.3, H * 0.3, H * 0.5);
-        fogGrad.addColorStop(0, 'rgba(140,150,160,0.12)');
-        fogGrad.addColorStop(1, 'rgba(140,150,160,0)');
-        ctx.fillStyle = fogGrad;
-        ctx.fillRect(0, 0, W, H);
-        // Second fog bank
-        const fogGrad2 = ctx.createRadialGradient(W * 0.7, H * 0.4, 30, W * 0.7, H * 0.4, H * 0.4);
-        fogGrad2.addColorStop(0, 'rgba(130,140,150,0.08)');
-        fogGrad2.addColorStop(1, 'rgba(130,140,150,0)');
-        ctx.fillStyle = fogGrad2;
-        ctx.fillRect(0, 0, W, H);
+        // Drifting fog banks using noise
+        for (let i = 0; i < 3; i++) {
+            const cx = (W * (0.2 + i * 0.3) + Math.sin(time * 0.1 + i * 2) * W * 0.15) % W;
+            const cy = H * (0.25 + i * 0.15) + Math.cos(time * 0.08 + i) * 30;
+            const radius = H * (0.25 + Math.sin(time * 0.05 + i * 1.5) * 0.08);
+            const fogGrad = ctx.createRadialGradient(cx, cy, 20, cx, cy, radius);
+            fogGrad.addColorStop(0, `rgba(140,150,160,${0.1 - i * 0.02})`);
+            fogGrad.addColorStop(0.7, `rgba(130,140,150,${0.04})`);
+            fogGrad.addColorStop(1, 'rgba(130,140,150,0)');
+            ctx.fillStyle = fogGrad;
+            ctx.fillRect(0, 0, W, H);
+        }
+        // Fog wisps (particle-like streaks)
+        ctx.globalAlpha = 0.04;
+        for (let i = 0; i < 6; i++) {
+            const wx = ((time * 15 + i * 200) % (W + 200)) - 100;
+            const wy = H * (0.2 + i * 0.1) + Math.sin(time * 0.3 + i) * 20;
+            ctx.fillStyle = 'rgba(160,170,180,0.5)';
+            ctx.fillRect(wx, wy, 80 + Math.sin(i) * 30, 2);
+        }
+        ctx.globalAlpha = 1;
+    }
+    if (activeEvent === 'storm') {
+        // T3: Rain streaks
+        ctx.save();
+        ctx.globalAlpha = 0.15;
+        ctx.strokeStyle = 'rgba(150,170,200,0.4)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 40; i++) {
+            const rx = ((i * 97 + time * 300) % (W + 100)) - 50;
+            const ry = ((i * 131 + time * 600) % (H + 100)) - 50;
+            ctx.beginPath();
+            ctx.moveTo(rx, ry);
+            ctx.lineTo(rx - 3, ry + 12);
+            ctx.stroke();
+        }
+        ctx.restore();
+        // Wave motion overlay
+        ctx.globalAlpha = 0.03;
+        const waveY = H * 0.18;
+        for (let x = 0; x < W; x += 8) {
+            const wh = Math.sin(x * 0.02 + time * 2) * 4 + Math.sin(x * 0.035 + time * 3) * 2;
+            ctx.fillStyle = 'rgba(80,120,160,0.5)';
+            ctx.fillRect(x, waveY + wh, 8, 3);
+        }
+        ctx.globalAlpha = 1;
     }
     if (activeEvent === 'redTide') {
         ctx.fillStyle = 'rgba(60,120,80,0.04)';
@@ -415,6 +571,16 @@ function renderGameplay() {
     }
     if (activeEvent === 'newMoon') {
         ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillRect(0, 0, W, H);
+    }
+    // T4: Dead calm — eerie flat water, subtle pulsing darkness
+    if (activeEvent === 'deadCalm') {
+        // Flatten the water noise — no waves
+        ctx.fillStyle = 'rgba(8,14,26,0.08)';
+        ctx.fillRect(0, H * 0.17, W, H);
+        // Slow, ominous pulse from below
+        const pulse = Math.sin(time * 0.5) * 0.02;
+        ctx.fillStyle = `rgba(20,10,30,${Math.max(0, pulse)})`;
         ctx.fillRect(0, 0, W, H);
     }
 
@@ -450,7 +616,8 @@ function renderGameplay() {
     renderVignette(ctx, W, H);
 
     // Night timer urgency glow
-    const nightDuration = CFG.nights[nightNum] ? CFG.nights[nightNum].duration || CFG.night.duration : CFG.night.duration;
+    const currentCfg = getNightConfig();
+    const nightDuration = currentCfg ? currentCfg.duration || CFG.night.duration : CFG.night.duration;
     if (nightTimer > 0) {
         const remaining = Math.max(0, nightDuration - nightTimer);
         if (remaining < 20) {
@@ -504,8 +671,13 @@ function renderGameplay() {
         ctx.globalAlpha = 1;
     }
 
+    // T4: Tally flashes
+    renderTallyFlashes(ctx);
+
     // HUD
     renderHUD(ctx, W, H, time, nightNum, nightTimer, nightStats, fogHornCooldown, fogHornActive, spyglassCooldown, spyglassActive);
+
+    ctx.restore(); // T4: end screen shake transform
 }
 
 // ── Render State ──
@@ -545,6 +717,7 @@ function renderState(s) {
             }
             break;
         }
+        case GameState.ENDLESS_DAWN: renderDawn(ctx, W, H, time, stateTimer, endlessNightCount + 15); break;
         case GameState.PAUSED: break; // handled separately
     }
 }

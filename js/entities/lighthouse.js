@@ -259,9 +259,27 @@ export function renderLighthouse(ctx, time) {
     ctx.fillStyle = '#555045';
     ctx.fillRect(-lw / 3, -lh - 12, lw / 1.5, 14);
 
+    // T4: Fresnel lens rotation effect
+    const fr = beam.fuelRatio;
+    const lensAngle = time * 1.2; // slow rotation
+    const lensRadius = 7;
+    ctx.save();
+    ctx.translate(0, -lh - 5);
+    // Glass panels (rotating)
+    for (let i = 0; i < 4; i++) {
+        const a = lensAngle + i * Math.PI / 2;
+        const px = Math.cos(a) * lensRadius * 0.6;
+        const py = Math.sin(a) * lensRadius * 0.25; // perspective squash
+        const alpha = (0.15 + Math.sin(a) * 0.08) * fr;
+        ctx.fillStyle = `rgba(255,240,200,${alpha})`;
+        ctx.beginPath();
+        ctx.ellipse(px, py, 3, 5, a * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
+
     // Light source glow
     const glowSize = 12 + Math.sin(time * 2) * 2;
-    const fr = beam.fuelRatio;
     ctx.fillStyle = `rgba(255,204,68,${0.6 * fr})`;
     ctx.beginPath();
     ctx.arc(0, -lh - 5, glowSize, 0, Math.PI * 2);

@@ -91,3 +91,66 @@ export function renderParticles(ctx) {
 export function clearParticles() {
     particles.length = 0;
 }
+
+// ── T4: Screen Shake System ──
+const shake = {
+    x: 0,
+    y: 0,
+    intensity: 0,
+    decay: 0.92,
+};
+
+export function triggerShake(intensity) {
+    shake.intensity = Math.max(shake.intensity, intensity);
+}
+
+export function updateShake(dt) {
+    if (shake.intensity > 0.1) {
+        shake.x = (Math.random() - 0.5) * shake.intensity * 2;
+        shake.y = (Math.random() - 0.5) * shake.intensity * 2;
+        shake.intensity *= shake.decay;
+    } else {
+        shake.x = 0;
+        shake.y = 0;
+        shake.intensity = 0;
+    }
+}
+
+export function applyShake(ctx) {
+    if (shake.x !== 0 || shake.y !== 0) {
+        ctx.translate(shake.x, shake.y);
+    }
+}
+
+export function getShakeOffset() {
+    return { x: shake.x, y: shake.y };
+}
+
+// ── T4: Harbor Arrival Tally ──
+const tallyFlashes = [];
+
+export function addTallyFlash(x, y, text) {
+    tallyFlashes.push({ x, y, text, life: 2.0, maxLife: 2.0 });
+}
+
+export function updateTallyFlashes(dt) {
+    for (let i = tallyFlashes.length - 1; i >= 0; i--) {
+        tallyFlashes[i].life -= dt;
+        tallyFlashes[i].y -= 15 * dt;
+        if (tallyFlashes[i].life <= 0) tallyFlashes.splice(i, 1);
+    }
+}
+
+export function renderTallyFlashes(ctx) {
+    for (const f of tallyFlashes) {
+        const alpha = f.life > 1.5 ? (f.maxLife - f.life) / 0.5 : f.life > 0.5 ? 1 : f.life / 0.5;
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.7;
+        ctx.fillStyle = '#ffcc44';
+        ctx.font = `bold ${14}px Georgia, serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(f.text, f.x, f.y);
+        ctx.restore();
+    }
+}

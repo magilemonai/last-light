@@ -144,11 +144,11 @@ export const CFG = {
             spawnInterval: [2, 5], duration: 110, event: 'storm',
             desc: "The worst night. Hold fast.",
         },
-        { // Night 14: The breather
+        { // Night 14: The breather — T4: eerie calm
             skiffs: 3, merchants: 1, passengers: 0, ghostShips: 0,
-            lurkers: 2, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
-            spawnInterval: [8, 14], duration: 90,
-            desc: "The sea is calm. Almost gentle.",
+            lurkers: 0, flinches: 0, mimics: 0, abyssals: 0, shades: 0,
+            spawnInterval: [10, 18], duration: 90, event: 'deadCalm',
+            desc: "The sea is still. Nothing moves.",
         },
         { // Night 15: The finale
             skiffs: 7, merchants: 3, passengers: 2, ghostShips: 1,
@@ -160,16 +160,39 @@ export const CFG = {
 };
 
 export const UPGRADES = {
-    lensPolish:    { name: 'Lens Polish',    desc: 'The lens needs cleaning. A polished lens throws a brighter beam.',
-                     prompt: 'The lens needs cleaning.', effect: 'beam brightness +10%' },
+    // ── Keeper's Path: wider beam, defense, endurance ──
+    lensPolish:    { name: 'Lens Polish',    desc: 'The lens needs cleaning. A polished lens throws a wider beam.',
+                     prompt: 'The lens needs cleaning.', effect: 'beam width +10%',
+                     path: 'keeper', excludes: 'prismFocus' },
     oilReserve:    { name: 'Oil Reserve',    desc: 'There\'s oil in the supply shed. Extra fuel for the long nights.',
-                     prompt: 'There\'s oil in the supply shed.', effect: 'max fuel +15%' },
-    fogHorn:       { name: 'Fog Horn',       desc: 'The horn mechanism can be repaired. A blast reveals what hides in the dark.',
-                     prompt: 'The horn mechanism can be repaired.', effect: 'active: reveal all entities briefly' },
+                     prompt: 'There\'s oil in the supply shed.', effect: 'max fuel +15%',
+                     path: 'keeper' },
     stormShutters: { name: 'Storm Shutters', desc: 'The shutters need reinforcing. Slows what comes for the tower.',
-                     prompt: 'The shutters need reinforcing.', effect: 'shades 30% slower' },
+                     prompt: 'The shutters need reinforcing.', effect: 'shades 30% slower',
+                     path: 'keeper', excludes: 'wardStone' },
+    fogHorn:       { name: 'Fog Horn',       desc: 'The horn mechanism can be repaired. A blast reveals and scatters what hides in the dark.',
+                     prompt: 'The horn mechanism can be repaired.', effect: 'active: reveal + scatter',
+                     path: 'keeper', ability: true },
+
+    // ── Watcher's Path: narrow focused beam, aggression, precision ──
+    prismFocus:    { name: 'Prism Focus',    desc: 'A prism from the old keeper\'s kit. Narrows the beam but doubles its reach.',
+                     prompt: 'A prism from the old keeper\'s kit.', effect: 'beam -20% width, +30% range',
+                     path: 'watcher', excludes: 'lensPolish' },
+    phosphorOil:   { name: 'Phosphor Oil',   desc: 'This oil burns hotter. Overdrive drains less fuel.',
+                     prompt: 'Strange oil in a sealed jar.', effect: 'overdrive drain -40%',
+                     path: 'watcher' },
+    wardStone:     { name: 'Ward Stone',     desc: 'An old stone etched with marks. Creatures flee faster when lit.',
+                     prompt: 'An etched stone on the windowsill.', effect: 'creature flee speed +50%',
+                     path: 'watcher', excludes: 'stormShutters' },
     spyglass:      { name: 'Spyglass',       desc: 'A spyglass sits in the drawer. See further, if only for a moment.',
-                     prompt: 'A spyglass sits in the drawer.', effect: 'active: zoom beam briefly' },
+                     prompt: 'A spyglass sits in the drawer.', effect: 'active: zoom beam briefly',
+                     path: 'watcher', ability: true },
+
+    // ── Neutral (available to either path) ──
     logBook:       { name: 'Log Book',       desc: 'A proper record keeps the mind sharp. Marks where ships were lost so you can watch those waters.',
-                     prompt: 'The logbook needs updating.', effect: 'shows wreck positions during gameplay' },
+                     prompt: 'The logbook needs updating.', effect: 'shows wreck positions',
+                     path: 'neutral' },
+    tinderBox:     { name: 'Tinder Box',     desc: 'Emergency supplies. Fuel regenerates faster when low.',
+                     prompt: 'Emergency supplies in the cellar.', effect: 'fuel regen +50% when below 30%',
+                     path: 'neutral' },
 };

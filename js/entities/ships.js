@@ -5,7 +5,7 @@
 import { CFG } from '../config.js';
 import { lighthouse, beam } from './lighthouse.js';
 import { nightStats } from '../state.js';
-import { spawnParticle } from '../utils.js';
+import { spawnParticle, triggerShake, addTallyFlash } from '../utils.js';
 import { playSound } from '../systems/audio.js';
 
 export let ships = [];
@@ -191,6 +191,9 @@ export function updateShips(dt, time, activeEvent, harborGlowRef, fogHornActive,
             if (s.type === 'passenger') nightStats.passengersSaved++;
             harborGlowRef.value += 0.15;
             playSound('arrive');
+            // T4: tally flash
+            const label = s.type === 'passenger' ? 'Passengers safe' : s.type === 'merchant' ? 'Merchant safe' : 'Safe harbor';
+            addTallyFlash(s.x, s.y - 20, label);
             for (let i = 0; i < 8; i++) {
                 spawnParticle(s.x, s.y, {
                     speed: 20 + Math.random() * 40,
@@ -218,6 +221,7 @@ export function updateShips(dt, time, activeEvent, harborGlowRef, fogHornActive,
             nightStats.lost++;
             if (s.type === 'passenger') nightStats.passengersLost++;
             playSound('sink');
+            triggerShake(s.type === 'passenger' ? 8 : 5); // T4: screen shake
         }
     }
 

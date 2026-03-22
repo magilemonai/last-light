@@ -275,17 +275,42 @@ export function setUpgradeChoices(choices) { upgradeChoices = choices; upgradeSe
 export function setUpgradeSelected(idx) { upgradeSelected = idx; }
 
 export function getUpgradeChoices(night) {
-    const all = ['lensPolish', 'oilReserve', 'fogHorn', 'stormShutters', 'spyglass', 'logBook'];
-    const abilities = campaign.upgrades.filter(u => u === 'fogHorn' || u === 'spyglass');
+    const all = Object.keys(UPGRADES);
+    const owned = campaign.upgrades;
+
     const available = all.filter(u => {
-        if ((u === 'fogHorn' || u === 'spyglass') && abilities.includes(u)) return false;
+        const up = UPGRADES[u];
+        // Abilities can only be picked once
+        if (up.ability && owned.includes(u)) return false;
+        // Exclude mutually exclusive upgrades
+        if (up.excludes && owned.includes(up.excludes)) return false;
         return true;
     });
+
+    // Shuffle
     for (let i = available.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [available[i], available[j]] = [available[j], available[i]];
     }
-    return available.slice(0, night < 5 ? 2 : 3);
+
+    // Pick choices: ensure at least one from each available path when possible
+    const count = night < 5 ? 2 : 3;
+    const result = [];
+    const paths = ['keeper', 'watcher', 'neutral'];
+
+    for (const path of paths) {
+        if (result.length >= count) break;
+        const pathPick = available.find(u => UPGRADES[u].path === path && !result.includes(u));
+        if (pathPick) result.push(pathPick);
+    }
+
+    // Fill remaining slots
+    for (const u of available) {
+        if (result.length >= count) break;
+        if (!result.includes(u)) result.push(u);
+    }
+
+    return result;
 }
 
 export function renderUpgrade(ctx, W, H, time, stateTimer) {
@@ -333,6 +358,16 @@ export function renderUpgrade(ctx, W, H, time, stateTimer) {
         ctx.roundRect(startX, y, optionW, optionH, 4);
         ctx.fill();
         ctx.stroke();
+
+        // T3: Path label badge
+        const pathColors = { keeper: '#668844', watcher: '#446688', neutral: '#666655' };
+        const pathLabels = { keeper: 'KEEPER', watcher: 'WATCHER', neutral: '' };
+        if (up.path && pathLabels[up.path]) {
+            ctx.textAlign = 'right';
+            ctx.fillStyle = selected ? pathColors[up.path] : `${pathColors[up.path]}88`;
+            ctx.font = `bold ${Math.min(9, W * 0.012)}px Georgia, serif`;
+            ctx.fillText(pathLabels[up.path], startX + optionW - 10, y + 12);
+        }
 
         ctx.textAlign = 'left';
         ctx.fillStyle = selected ? '#ffcc44' : '#ccc8b8';
@@ -562,8 +597,15 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer) {
 
     if (stateTimer > 3.0) {
         const pa = 0.3 + Math.sin(time * 3) * 0.2;
-        ctx.fillStyle = `rgba(170,152,112,${pa})`;
-        ctx.font = `${Math.min(13, W * 0.018)}px Georgia, serif`;
-        ctx.fillText('Click to return', W / 2, H * 0.95);
+
+        // T3: "One More Night" endless mode option
+        const endlessHover = Math.abs(input.my - H * 0.91) < 12 && Math.abs(input.mx - W / 2) < W * 0.2;
+        ctx.fillStyle = endlessHover ? `rgba(255,204,68,${pa + 0.3})` : `rgba(255,204,68,${pa})`;
+        ctx.font = `${Math.min(14, W * 0.02)}px Georgia, serif`;
+        ctx.fillText('One more night', W / 2, H * 0.91);
+
+        ctx.fillStyle = `rgba(170,152,112,${pa * 0.7})`;
+        ctx.font = `${Math.min(12, W * 0.016)}px Georgia, serif`;
+        ctx.fillText('Return to title', W / 2, H * 0.95);
     }
 }

@@ -501,12 +501,70 @@ export function updateAmbientForEvent(event) {
             ambientNode.gain.gain.linearRampToValueAtTime(0.08, now + 0.5);
             ambientNode.filter.frequency.linearRampToValueAtTime(500, now + 0.5);
             if (windNode) windNode.gain.gain.linearRampToValueAtTime(0.05, now + 0.5);
+            if (creakNode) creakNode.gain.gain.linearRampToValueAtTime(0.03, now + 0.5);
         } else if (event === 'fog') {
             if (windNode) windNode.gain.gain.linearRampToValueAtTime(0.005, now + 0.5);
+        } else if (event === 'deadCalm') {
+            // T4: Night 14 eerie silence — almost no ambient
+            ambientNode.gain.gain.linearRampToValueAtTime(0.01, now + 1.0);
+            ambientNode.filter.frequency.linearRampToValueAtTime(150, now + 1.0);
+            if (windNode) windNode.gain.gain.linearRampToValueAtTime(0.0, now + 0.5);
+            if (creakNode) creakNode.gain.gain.linearRampToValueAtTime(0.005, now + 0.5);
         } else {
             ambientNode.gain.gain.linearRampToValueAtTime(0.05, now + 0.5);
             ambientNode.filter.frequency.linearRampToValueAtTime(350, now + 0.5);
             if (windNode) windNode.gain.gain.linearRampToValueAtTime(0.02, now + 0.5);
+        }
+    } catch(e) {}
+}
+
+// ── T3: Creature Proximity Audio ──
+// Continuous tones that intensify as creatures approach
+let creatureAudioNodes = {};
+const CREATURE_AUDIO_CONFIGS = {
+    lurker:  { freq: 45,  type: 'sine',     maxGain: 0.04, filterFreq: 200 },
+    flinch:  { freq: 180, type: 'triangle', maxGain: 0.02, filterFreq: 800 },
+    abyssal: { freq: 25,  type: 'sine',     maxGain: 0.08, filterFreq: 120 },
+    shade:   { freq: 2200,type: 'sawtooth', maxGain: 0.015, filterFreq: 3000 },
+    mimic:   { freq: 60,  type: 'sine',     maxGain: 0.02, filterFreq: 300 },
+};
+
+export function updateCreatureAudio(creaturesByType) {
+    try {
+        const ac = getAudio();
+        const now = ac.currentTime;
+
+        for (const [type, config] of Object.entries(CREATURE_AUDIO_CONFIGS)) {
+            const proximity = creaturesByType[type] || 0; // 0-1 normalized
+
+            if (proximity > 0 && !creatureAudioNodes[type]) {
+                // Start this creature's ambient tone
+                const osc = ac.createOscillator();
+                const gain = ac.createGain();
+                const filter = ac.createBiquadFilter();
+                osc.type = config.type;
+                osc.frequency.value = config.freq;
+                filter.type = type === 'shade' ? 'highpass' : 'lowpass';
+                filter.frequency.value = config.filterFreq;
+                filter.Q.value = type === 'shade' ? 1 : 0.7;
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.gain.value = 0;
+                gain.connect(masterGain);
+                osc.start();
+                creatureAudioNodes[type] = { osc, gain, filter };
+            }
+
+            if (creatureAudioNodes[type]) {
+                const target = proximity * config.maxGain;
+                creatureAudioNodes[type].gain.gain.linearRampToValueAtTime(target, now + 0.1);
+                // Modulate filter based on proximity for shade whisper effect
+                if (type === 'shade') {
+                    creatureAudioNodes[type].filter.frequency.linearRampToValueAtTime(
+                        1500 + proximity * 1500, now + 0.1
+                    );
+                }
+            }
         }
     } catch(e) {}
 }
