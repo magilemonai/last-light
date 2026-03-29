@@ -8,6 +8,7 @@ import { campaign, nightStats, getJournalEntry, hasSavedCampaign } from '../stat
 import { lighthouse, beam, renderLighthouse } from '../entities/lighthouse.js';
 import { renderWater, renderVignette } from './water.js';
 import { lerp, noise2d } from '../utils.js';
+import { fontSize, hitSize, uiScale } from '../scaling.js';
 
 // ── Title Screen (T2: Continue option) ──
 export function renderTitle(ctx, W, H, time) {
@@ -45,7 +46,7 @@ export function renderTitle(ctx, W, H, time) {
     ctx.shadowColor = '#ffcc44';
     ctx.shadowBlur = 30;
     ctx.fillStyle = '#ffcc44';
-    ctx.font = `bold ${Math.min(72, W * 0.08)}px Georgia, serif`;
+    ctx.font = `bold ${fontSize(72, 0.08, 'hero')}px Georgia, serif`;
     ctx.fillText('LAST LIGHT', 0, 0);
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#fff8e0';
@@ -53,32 +54,35 @@ export function renderTitle(ctx, W, H, time) {
     ctx.restore();
 
     // Subtitle
+    const subtitleFs = fontSize(18, 0.025, 'heading');
     ctx.fillStyle = `rgba(180,170,150,${0.5 + Math.sin(time * 2) * 0.2})`;
-    ctx.font = `${Math.min(18, W * 0.025)}px Georgia, serif`;
-    ctx.fillText('A lighthouse keeper\u2019s vigil against the dark', W / 2, titleY + 50);
+    ctx.font = `${subtitleFs}px Georgia, serif`;
+    ctx.fillText('A lighthouse keeper\u2019s vigil against the dark', W / 2, titleY + subtitleFs * 2.8);
 
     // Brief premise
+    const premiseFs = fontSize(13, 0.018, 'small');
     ctx.fillStyle = 'rgba(150,145,135,0.35)';
-    ctx.font = `italic ${Math.min(13, W * 0.018)}px Georgia, serif`;
-    ctx.fillText('Guide ships to harbor. Keep the light burning.', W / 2, titleY + 80);
+    ctx.font = `italic ${premiseFs}px Georgia, serif`;
+    ctx.fillText('Guide ships to harbor. Keep the light burning.', W / 2, titleY + subtitleFs * 2.8 + premiseFs * 2.2);
 
     // T2: Start / Continue options
     const hasSave = hasSavedCampaign();
     const promptAlpha = 0.3 + Math.sin(time * 3) * 0.3;
 
+    const menuHit = hitSize(14);
     if (hasSave) {
         // Continue option
         const contY = H * 0.56;
         const newY = H * 0.63;
-        const hoverCont = Math.abs(input.my - contY) < 14 && Math.abs(input.mx - W / 2) < W * 0.2;
-        const hoverNew = Math.abs(input.my - newY) < 14 && Math.abs(input.mx - W / 2) < W * 0.2;
+        const hoverCont = Math.abs(input.my - contY) < menuHit && Math.abs(input.mx - W / 2) < W * 0.25;
+        const hoverNew = Math.abs(input.my - newY) < menuHit && Math.abs(input.mx - W / 2) < W * 0.25;
 
         ctx.fillStyle = hoverCont ? `rgba(255,204,68,${promptAlpha + 0.3})` : `rgba(255,248,224,${promptAlpha})`;
-        ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
+        ctx.font = `${fontSize(16, 0.022, 'body')}px Georgia, serif`;
         ctx.fillText('Continue', W / 2, contY);
 
         ctx.fillStyle = hoverNew ? `rgba(255,204,68,${promptAlpha + 0.3})` : `rgba(180,170,150,${promptAlpha * 0.7})`;
-        ctx.font = `${Math.min(14, W * 0.019)}px Georgia, serif`;
+        ctx.font = `${fontSize(14, 0.019, 'body')}px Georgia, serif`;
         ctx.fillText('New Game', W / 2, newY);
 
         // Store hover state for click handling
@@ -86,7 +90,7 @@ export function renderTitle(ctx, W, H, time) {
         renderTitle._hoverNew = hoverNew;
     } else {
         ctx.fillStyle = `rgba(255,248,224,${promptAlpha})`;
-        ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
+        ctx.font = `${fontSize(16, 0.022, 'body')}px Georgia, serif`;
         ctx.fillText(input.touched ? 'Tap to begin' : 'Click or press Enter to begin', W / 2, H * 0.6);
         renderTitle._hoverContinue = false;
         renderTitle._hoverNew = false;
@@ -112,18 +116,18 @@ export function renderNightIntro(ctx, W, H, time, stateTimer, nightNum) {
     ctx.textBaseline = 'middle';
 
     ctx.fillStyle = '#ffcc44';
-    ctx.font = `bold ${Math.min(36, W * 0.05)}px Georgia, serif`;
+    ctx.font = `bold ${fontSize(36, 0.05, 'title')}px Georgia, serif`;
     ctx.fillText(`Night ${nightNum + 1}`, W / 2, H * 0.35);
 
     ctx.fillStyle = '#aaa8a0';
-    ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
+    ctx.font = `${fontSize(16, 0.022, 'body')}px Georgia, serif`;
     ctx.fillText(cfg.desc || '', W / 2, H * 0.45);
 
     // Tutorial on Night 1
     if (nightNum === 0) {
         const tutAlpha = stateTimer < 1.5 ? Math.max(0, (stateTimer - 0.8) / 0.7) : alpha;
         ctx.globalAlpha = Math.max(0, tutAlpha) * 0.7;
-        const small = Math.min(13, W * 0.018);
+        const small = fontSize(13, 0.018, 'small');
         ctx.font = `${small}px Georgia, serif`;
         ctx.fillStyle = '#887858';
         const controlY = H * 0.58;
@@ -207,7 +211,7 @@ export function renderDawn(ctx, W, H, time, stateTimer, nightNum) {
         ctx.textBaseline = 'middle';
 
         ctx.fillStyle = '#3a3530';
-        ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
+        ctx.font = `italic ${fontSize(16, 0.022, 'body')}px Georgia, serif`;
         ctx.fillText(`Night ${nightNum}`, W / 2, H * 0.15);
 
         const total = nightStats.saved + nightStats.lost;
@@ -221,12 +225,12 @@ export function renderDawn(ctx, W, H, time, stateTimer, nightNum) {
         }
 
         ctx.fillStyle = '#2a2520';
-        ctx.font = `${Math.min(18, W * 0.025)}px Georgia, serif`;
+        ctx.font = `${fontSize(18, 0.025, 'heading')}px Georgia, serif`;
         ctx.fillText(summary, W / 2, H * 0.22);
 
         if (nightStats.lost > 0) {
             ctx.fillStyle = '#5a4838';
-            ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
+            ctx.font = `italic ${fontSize(14, 0.02, 'body')}px Georgia, serif`;
             ctx.fillText(`${nightStats.lost} met the rocks.`, W / 2, H * 0.28);
         }
 
@@ -234,7 +238,7 @@ export function renderDawn(ctx, W, H, time, stateTimer, nightNum) {
         const journalEntry = getJournalEntry(nightNum - 1);
         if (journalEntry) {
             ctx.fillStyle = '#4a4538';
-            ctx.font = `italic ${Math.min(13, W * 0.018)}px Georgia, serif`;
+            ctx.font = `italic ${fontSize(13, 0.018, 'small')}px Georgia, serif`;
             const maxWidth = W * 0.7;
             const words = journalEntry.split(' ');
             let line = '';
@@ -259,8 +263,8 @@ export function renderDawn(ctx, W, H, time, stateTimer, nightNum) {
         const pa = 0.3 + Math.sin(time * 3) * 0.2;
         ctx.fillStyle = `rgba(58,53,48,${pa})`;
         ctx.textAlign = 'center';
-        ctx.font = `${Math.min(14, W * 0.02)}px Georgia, serif`;
-        const nextText = nightNum < CFG.nights.length ? 'Click to continue' : 'Click to return';
+        ctx.font = `${fontSize(14, 0.02, 'body')}px Georgia, serif`;
+        const nextText = nightNum < CFG.nights.length ? (input.touched ? 'Tap to continue' : 'Click to continue') : (input.touched ? 'Tap to return' : 'Click to return');
         ctx.fillText(nextText, W / 2, H * 0.88);
     }
 
@@ -331,22 +335,24 @@ export function renderUpgrade(ctx, W, H, time, stateTimer) {
     ctx.textBaseline = 'middle';
 
     ctx.fillStyle = '#aaa8a0';
-    ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
+    ctx.font = `italic ${fontSize(16, 0.022, 'body')}px Georgia, serif`;
     ctx.fillText('Preparations for the coming night', W / 2, H * 0.15);
 
     ctx.fillStyle = '#ffcc44';
-    ctx.font = `bold ${Math.min(22, W * 0.03)}px Georgia, serif`;
+    ctx.font = `bold ${fontSize(22, 0.03, 'heading')}px Georgia, serif`;
     ctx.fillText('Choose one:', W / 2, H * 0.25);
 
-    const optionW = W * 0.6;
-    const optionH = 60;
+    const sc = uiScale();
+    const optionW = Math.min(W * 0.85, W * 0.6 * sc);
+    const optionH = 60 * sc;
     const startX = (W - optionW) / 2;
     const startY = H * 0.35;
 
+    const optionGap = 15 * sc;
     for (let i = 0; i < upgradeChoices.length; i++) {
         const key = upgradeChoices[i];
         const up = UPGRADES[key];
-        const y = startY + i * (optionH + 15);
+        const y = startY + i * (optionH + optionGap);
         const selected = upgradeSelected === i;
         const hover = input.my >= y && input.my <= y + optionH &&
                       input.mx >= startX && input.mx <= startX + optionW;
@@ -365,18 +371,18 @@ export function renderUpgrade(ctx, W, H, time, stateTimer) {
         if (up.path && pathLabels[up.path]) {
             ctx.textAlign = 'right';
             ctx.fillStyle = selected ? pathColors[up.path] : `${pathColors[up.path]}88`;
-            ctx.font = `bold ${Math.min(9, W * 0.012)}px Georgia, serif`;
-            ctx.fillText(pathLabels[up.path], startX + optionW - 10, y + 12);
+            ctx.font = `bold ${fontSize(9, 0.012, 'tiny')}px Georgia, serif`;
+            ctx.fillText(pathLabels[up.path], startX + optionW - 10, y + 14 * sc);
         }
 
         ctx.textAlign = 'left';
         ctx.fillStyle = selected ? '#ffcc44' : '#ccc8b8';
-        ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
-        ctx.fillText(up.prompt, startX + 15, y + 22);
+        ctx.font = `${fontSize(16, 0.022, 'body')}px Georgia, serif`;
+        ctx.fillText(up.prompt, startX + 15, y + optionH * 0.35);
 
         ctx.fillStyle = selected ? '#ddd8c8' : '#888580';
-        ctx.font = `italic ${Math.min(13, W * 0.018)}px Georgia, serif`;
-        ctx.fillText(up.desc.split('. ').slice(1).join('. '), startX + 15, y + 42);
+        ctx.font = `italic ${fontSize(13, 0.018, 'small')}px Georgia, serif`;
+        ctx.fillText(up.desc.split('. ').slice(1).join('. '), startX + 15, y + optionH * 0.68);
 
         ctx.textAlign = 'center';
     }
@@ -384,13 +390,13 @@ export function renderUpgrade(ctx, W, H, time, stateTimer) {
     if (upgradeSelected >= 0) {
         const pa = 0.4 + Math.sin(time * 3) * 0.2;
         ctx.fillStyle = `rgba(255,204,68,${pa})`;
-        ctx.font = `${Math.min(14, W * 0.02)}px Georgia, serif`;
-        ctx.fillText('Click again to confirm', W / 2, H * 0.88);
+        ctx.font = `${fontSize(14, 0.02, 'body')}px Georgia, serif`;
+        ctx.fillText(input.touched ? 'Tap again to confirm' : 'Click again to confirm', W / 2, H * 0.88);
     }
 
     if (campaign.upgrades.includes('fogHorn') || campaign.upgrades.includes('spyglass')) {
         ctx.fillStyle = 'rgba(150,145,135,0.5)';
-        ctx.font = `${Math.min(12, W * 0.016)}px Georgia, serif`;
+        ctx.font = `${fontSize(12, 0.016, 'small')}px Georgia, serif`;
         let hints = [];
         if (campaign.upgrades.includes('fogHorn')) hints.push('F \u2014 Fog Horn');
         if (campaign.upgrades.includes('spyglass')) hints.push('G \u2014 Spyglass');
@@ -430,17 +436,19 @@ export function renderFinaleChoice(ctx, W, H, time, stateTimer) {
     // T1: Third option gated on whisper collection (12+)
     const hasWhisperTruth = campaign.whispersCollected.length >= 12;
 
+    const choiceHit = hitSize(16);
     const choice1Y = H * 0.38;
     const choice2Y = H * 0.50;
     const choice3Y = H * 0.62;
 
-    const hover1 = Math.abs(input.my - choice1Y) < 16 && Math.abs(input.mx - W / 2) < W * 0.3;
-    const hover2 = Math.abs(input.my - choice2Y) < 16 && Math.abs(input.mx - W / 2) < W * 0.3;
-    const hover3 = hasWhisperTruth && Math.abs(input.my - choice3Y) < 16 && Math.abs(input.mx - W / 2) < W * 0.3;
+    const hover1 = Math.abs(input.my - choice1Y) < choiceHit && Math.abs(input.mx - W / 2) < W * 0.4;
+    const hover2 = Math.abs(input.my - choice2Y) < choiceHit && Math.abs(input.mx - W / 2) < W * 0.4;
+    const hover3 = hasWhisperTruth && Math.abs(input.my - choice3Y) < choiceHit && Math.abs(input.mx - W / 2) < W * 0.4;
     finaleChoiceHover = hover1 ? 0 : hover2 ? 1 : hover3 ? 2 : -1;
 
+    const choiceFs = fontSize(18, 0.025, 'heading');
     ctx.fillStyle = hover1 ? '#ffcc44' : 'rgba(255,248,224,0.6)';
-    ctx.font = `italic ${Math.min(18, W * 0.025)}px Georgia, serif`;
+    ctx.font = `italic ${choiceFs}px Georgia, serif`;
     ctx.fillText('Relight the beam. Continue the watch.', W / 2, choice1Y);
 
     ctx.fillStyle = hover2 ? '#ffcc44' : 'rgba(255,248,224,0.6)';
@@ -449,12 +457,12 @@ export function renderFinaleChoice(ctx, W, H, time, stateTimer) {
     // Third option — only if whispers collected
     if (hasWhisperTruth) {
         ctx.fillStyle = hover3 ? '#9988bb' : 'rgba(130,110,180,0.6)';
-        ctx.font = `italic ${Math.min(18, W * 0.025)}px Georgia, serif`;
+        ctx.font = `italic ${choiceFs}px Georgia, serif`;
         ctx.fillText('Answer the dark. Speak the words back.', W / 2, choice3Y);
         // Subtle whisper hint
         ctx.fillStyle = 'rgba(100,80,140,0.25)';
-        ctx.font = `italic ${Math.min(11, W * 0.015)}px Georgia, serif`;
-        ctx.fillText('You heard enough to understand', W / 2, choice3Y + 20);
+        ctx.font = `italic ${fontSize(11, 0.015, 'small')}px Georgia, serif`;
+        ctx.fillText('You heard enough to understand', W / 2, choice3Y + choiceFs * 1.3);
     }
 
     ctx.globalAlpha = 1;
@@ -473,7 +481,7 @@ export function renderFinaleEnd(ctx, W, H, time, stateTimer, finalChoice) {
             ctx.globalAlpha = fadeIn;
             ctx.fillStyle = '#ffcc44';
             ctx.textAlign = 'center';
-            ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
+            ctx.font = `italic ${fontSize(16, 0.022, 'body')}px Georgia, serif`;
             // Path-based relight text
             const relightText = hasWatcherPath && !hasKeeperPath
                 ? 'The beam narrows. It burns brighter than before.'
@@ -484,7 +492,7 @@ export function renderFinaleEnd(ctx, W, H, time, stateTimer, finalChoice) {
             // Loss-scaled warning
             if (lossRatio > 0.4) {
                 ctx.fillStyle = 'rgba(255,100,80,0.4)';
-                ctx.font = `italic ${Math.min(12, W * 0.016)}px Georgia, serif`;
+                ctx.font = `italic ${fontSize(12, 0.016, 'small')}px Georgia, serif`;
                 ctx.fillText('But the flame is guttering.', W / 2, H / 2 + 25);
             }
             ctx.globalAlpha = 1;
@@ -510,14 +518,14 @@ export function renderFinaleEnd(ctx, W, H, time, stateTimer, finalChoice) {
             ctx.globalAlpha = textAlpha;
             ctx.fillStyle = '#9988bb';
             ctx.textAlign = 'center';
-            ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
+            ctx.font = `italic ${fontSize(16, 0.022, 'body')}px Georgia, serif`;
             ctx.fillText('You speak into the dark. The dark answers.', W / 2, H * 0.45);
         }
         if (stateTimer > 4.0) {
             const textAlpha = Math.min(1, (stateTimer - 4.0) / 2.0);
             ctx.globalAlpha = textAlpha;
             ctx.fillStyle = '#bbaadd';
-            ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
+            ctx.font = `italic ${fontSize(14, 0.02, 'body')}px Georgia, serif`;
             ctx.fillText('The bargain is remade. The light changes.', W / 2, H * 0.55);
             ctx.fillText('You are the keeper, and the kept.', W / 2, H * 0.60);
         }
@@ -525,7 +533,7 @@ export function renderFinaleEnd(ctx, W, H, time, stateTimer, finalChoice) {
             const textAlpha = Math.min(1, (stateTimer - 7.0) / 1.5);
             ctx.globalAlpha = textAlpha;
             ctx.fillStyle = '#fff8e0';
-            ctx.font = `${Math.min(14, W * 0.02)}px Georgia, serif`;
+            ctx.font = `${fontSize(14, 0.02, 'body')}px Georgia, serif`;
             ctx.fillText('The beam burns violet at the edges now.', W / 2, H * 0.72);
         }
         ctx.globalAlpha = 1;
@@ -551,7 +559,7 @@ export function renderFinaleEnd(ctx, W, H, time, stateTimer, finalChoice) {
             ctx.globalAlpha = textAlpha;
             ctx.fillStyle = '#aaa8a0';
             ctx.textAlign = 'center';
-            ctx.font = `italic ${Math.min(16, W * 0.022)}px Georgia, serif`;
+            ctx.font = `italic ${fontSize(16, 0.022, 'body')}px Georgia, serif`;
             // Path-based leave text
             if (hasWatcherPath && !hasKeeperPath) {
                 ctx.fillText('You saw too much. The dark showed you things the light never could.', W / 2, H * 0.6);
@@ -580,7 +588,7 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer, endlessHighScor
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    const paperW = Math.min(W * 0.8, 600);
+    const paperW = Math.min(W * 0.9, 600);
     const paperH = H * 0.8;
     const paperX = (W - paperW) / 2;
     const paperY = H * 0.1;
@@ -591,16 +599,16 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer, endlessHighScor
     ctx.strokeRect(paperX, paperY, paperW, paperH);
 
     ctx.fillStyle = '#aa9870';
-    ctx.font = `bold ${Math.min(24, W * 0.035)}px Georgia, serif`;
+    ctx.font = `bold ${fontSize(24, 0.035, 'heading')}px Georgia, serif`;
     ctx.fillText('THE KEEPER\'S RECORD', W / 2, paperY + 40);
 
     ctx.fillStyle = '#887858';
-    ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
+    ctx.font = `italic ${fontSize(14, 0.02, 'body')}px Georgia, serif`;
     ctx.fillText('Nights 1 through 15', W / 2, paperY + 65);
 
     const totalShips = campaign.totalSaved + campaign.totalLost;
     ctx.fillStyle = '#ccb888';
-    ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
+    ctx.font = `${fontSize(16, 0.022, 'body')}px Georgia, serif`;
     if (campaign.totalLost === 0) {
         ctx.fillText(`All ${totalShips} vessels found harbor.`, W / 2, paperY + 110);
     } else {
@@ -627,14 +635,14 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer, endlessHighScor
 
         if ((i + 1) % 5 === 0 || i === 0) {
             ctx.fillStyle = '#665840';
-            ctx.font = `${Math.min(10, W * 0.013)}px Georgia, serif`;
+            ctx.font = `${fontSize(10, 0.013, 'tiny')}px Georgia, serif`;
             ctx.fillText(`${i + 1}`, mapX + i * cellSize + cellSize / 2 - 1, mapY + cellSize + 12);
         }
     }
 
     // Week labels (fixed: correct positioning)
     ctx.fillStyle = '#665840';
-    ctx.font = `italic ${Math.min(11, W * 0.015)}px Georgia, serif`;
+    ctx.font = `italic ${fontSize(11, 0.015, 'tiny')}px Georgia, serif`;
     ctx.fillText('The Routine', mapX + 2.5 * cellSize, mapY + cellSize + 28);
     ctx.fillText('The Deterioration', mapX + 7.5 * cellSize, mapY + cellSize + 28);
     ctx.fillText('The Reckoning', mapX + 12.5 * cellSize, mapY + cellSize + 28);
@@ -642,7 +650,7 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer, endlessHighScor
     // Whispers
     const whisperY = mapY + cellSize + 60;
     ctx.fillStyle = '#8878a8';
-    ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
+    ctx.font = `italic ${fontSize(14, 0.02, 'body')}px Georgia, serif`;
     if (campaign.whispersCollected.length >= 12) {
         ctx.fillText('"' + campaign.whispersCollected.join(' ') + '"', W / 2, whisperY);
     } else if (campaign.whispersCollected.length > 0) {
@@ -657,7 +665,7 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer, endlessHighScor
     // Final line
     const finalY = paperY + paperH - 50;
     ctx.fillStyle = '#ccb888';
-    ctx.font = `${Math.min(16, W * 0.022)}px Georgia, serif`;
+    ctx.font = `${fontSize(16, 0.022, 'body')}px Georgia, serif`;
     const ratio = campaign.totalSaved / Math.max(1, campaign.totalSaved + campaign.totalLost);
     let finalLine;
     if (campaign.finalChoice === 'embrace') {
@@ -681,28 +689,29 @@ export function renderKeepersRecord(ctx, W, H, time, stateTimer, endlessHighScor
     if (stateTimer > 3.0) {
         const pa = 0.3 + Math.sin(time * 3) * 0.2;
 
+        const btnHit = hitSize(12);
         // T2: Endless high score
         if (endlessHighScore > 0) {
             ctx.fillStyle = 'rgba(150,140,120,0.3)';
-            ctx.font = `${Math.min(11, W * 0.015)}px Georgia, serif`;
+            ctx.font = `${fontSize(11, 0.015, 'small')}px Georgia, serif`;
             ctx.fillText(`Endless record: ${endlessHighScore} night${endlessHighScore !== 1 ? 's' : ''}`, W / 2, H * 0.86);
         }
 
         // T3: "One More Night" endless mode option
-        const endlessHover = Math.abs(input.my - H * 0.91) < 12 && Math.abs(input.mx - W / 2) < W * 0.2;
+        const endlessHover = Math.abs(input.my - H * 0.91) < btnHit && Math.abs(input.mx - W / 2) < W * 0.25;
         ctx.fillStyle = endlessHover ? `rgba(255,204,68,${pa + 0.3})` : `rgba(255,204,68,${pa})`;
-        ctx.font = `${Math.min(14, W * 0.02)}px Georgia, serif`;
+        ctx.font = `${fontSize(14, 0.02, 'body')}px Georgia, serif`;
         ctx.fillText('One more night', W / 2, H * 0.91);
 
         ctx.fillStyle = `rgba(170,152,112,${pa * 0.7})`;
-        ctx.font = `${Math.min(12, W * 0.016)}px Georgia, serif`;
+        ctx.font = `${fontSize(12, 0.016, 'small')}px Georgia, serif`;
         ctx.fillText('Return to title', W / 2, H * 0.95);
 
         // T3: Save Record button
-        const saveHover = Math.abs(input.my - (paperY + paperH - 15)) < 10
-                       && Math.abs(input.mx - (W / 2 + paperW / 2 - 50)) < 40;
+        const saveHover = Math.abs(input.my - (paperY + paperH - 15)) < btnHit
+                       && Math.abs(input.mx - (W / 2 + paperW / 2 - 50)) < Math.max(40, W * 0.1);
         ctx.fillStyle = saveHover ? `rgba(255,204,68,${pa + 0.2})` : `rgba(150,140,120,${pa * 0.5})`;
-        ctx.font = `${Math.min(11, W * 0.015)}px Georgia, serif`;
+        ctx.font = `${fontSize(11, 0.015, 'small')}px Georgia, serif`;
         ctx.textAlign = 'right';
         ctx.fillText('Save Record', W / 2 + paperW / 2 - 15, paperY + paperH - 15);
         ctx.textAlign = 'center';

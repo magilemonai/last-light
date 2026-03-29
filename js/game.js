@@ -15,6 +15,7 @@ import { playSound, startAmbient, setAmbientGain, updateAmbientForEvent, updateC
          startDroneMusic, updateDroneMusic, stopDroneMusic, setMusicVolume, setMasterVolume,
          playPianoSequence, stopPianoSequence } from './systems/audio.js';
 import { loadSettings, setSetting, getSettings } from './systems/settings.js';
+import { updateScaling, fontSize, hitSize } from './scaling.js';
 import { renderWater, renderHarbor, renderVignette, renderWreckage } from './rendering/water.js';
 import { renderHUD, renderPause, renderCursor, handlePauseClick } from './rendering/hud.js';
 import {
@@ -41,8 +42,15 @@ if (!ctx.roundRect) {
 
 let W, H;
 function resize() {
-    W = canvas.width = window.innerWidth;
-    H = canvas.height = window.innerHeight;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    updateScaling(W, H, input.touched);
     input.updateDimensions(W, H);
 }
 window.addEventListener('resize', resize);
@@ -388,7 +396,7 @@ function renderWhispers() {
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.fillStyle = w.collected ? '#9988bb' : '#665588';
-        ctx.font = `italic ${Math.min(14, W * 0.02)}px Georgia, serif`;
+        ctx.font = `italic ${fontSize(14, 0.02, 'body')}px Georgia, serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(w.text, w.x, w.y);
@@ -475,12 +483,13 @@ input.onClick(() => {
         if (stateTimer > 3.0) {
             // T3: Check if clicking "Save Record" button
             // Button is near bottom-right of paper
-            const paperW = Math.min(W * 0.8, 600);
+            const paperW = Math.min(W * 0.9, 600);
             const paperY = H * 0.1;
             const paperH = H * 0.8;
             const saveY = paperY + paperH - 15;
             const saveX = W / 2 + paperW / 2 - 50;
-            if (Math.abs(input.my - saveY) < 10 && Math.abs(input.mx - saveX) < 40) {
+            const btnHit = hitSize(10);
+            if (Math.abs(input.my - saveY) < btnHit && Math.abs(input.mx - saveX) < Math.max(40, W * 0.1)) {
                 saveKeepersRecordImage(canvas);
                 return; // don't navigate away
             }
@@ -488,7 +497,7 @@ input.onClick(() => {
             // Check if clicking "One More Night" vs "Return"
             const endlessY = H * 0.91;
             const returnY = H * 0.95;
-            if (Math.abs(input.my - endlessY) < 12 && Math.abs(input.mx - W / 2) < W * 0.2) {
+            if (Math.abs(input.my - endlessY) < hitSize(12) && Math.abs(input.mx - W / 2) < W * 0.25) {
                 // T3: Enter endless mode
                 endlessMode = true;
                 endlessNightCount = 0;
@@ -780,7 +789,7 @@ function renderGameplay() {
             ctx.stroke();
             // Subtle label
             ctx.fillStyle = 'rgba(255,100,60,0.2)';
-            ctx.font = '8px Georgia, serif';
+            ctx.font = `${fontSize(8, 0.012, 'tiny')}px Georgia, serif`;
             ctx.textAlign = 'center';
             ctx.fillText('wreck', wp.x, wp.y + 12);
             ctx.restore();
@@ -834,7 +843,7 @@ function renderGameplay() {
         ctx.globalAlpha = hintAlpha * 0.5;
         ctx.textAlign = 'center';
         ctx.fillStyle = '#ffcc44';
-        ctx.font = `${Math.min(12, W * 0.016)}px Georgia, serif`;
+        ctx.font = `${fontSize(12, 0.016, 'small')}px Georgia, serif`;
         if (nightTimer < 6) {
             ctx.fillText('Sweep the beam across the water to find ships', W / 2, H * 0.06);
         } else {
@@ -908,6 +917,7 @@ function loop(ts) {
     prevTime = ts;
     time += dt;
     stateTimer += dt;
+    updateScaling(W, H, input.touched);
 
     // T1: Pause handling
     if (pauseDebounce > 0) pauseDebounce -= dt;
@@ -933,7 +943,10 @@ function loop(ts) {
     }
 
     // Render
-    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
 
     if (state === GameState.PAUSED) {
         // Render gameplay underneath pause overlay

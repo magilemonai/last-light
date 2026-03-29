@@ -5,11 +5,12 @@
 import { CFG } from '../config.js';
 import { input } from '../input.js';
 import { spawnParticle } from '../utils.js';
+import { entityScale } from '../scaling.js';
 
 export const lighthouse = {
     x: 0, y: 0,
-    width: 28,
-    height: 90,
+    get width() { return 28 * entityScale(); },
+    get height() { return 90 * entityScale(); },
     get lightX() { return this.x; },
     get lightY() { return this.y - this.height - 5; },
 };
@@ -106,7 +107,8 @@ export const beam = {
     },
 
     getLength(activeEvent) {
-        let base = (window.innerHeight || 800) * CFG.beam.coneLength * (0.6 + this.fuelRatio * 0.4) * this.effectivePower;
+        const H = window.innerHeight || 800;
+        let base = H * CFG.beam.coneLength * (0.6 + this.fuelRatio * 0.4) * this.effectivePower;
         if (activeEvent === 'fog') base *= 0.6;
         if (activeEvent === 'newMoon') base *= 0.7;
         return this.overdriveActive ? base * 1.3 : base;
@@ -147,7 +149,7 @@ export const beam = {
 
     // T2: Improved beam render with reduced self-occlusion + beam-end indicator
     render(ctx, time, activeEvent) {
-        const H = ctx.canvas.height;
+        const H = window.innerHeight || 800;
         const len = this.getLength(activeEvent);
         const cone = this.getConeAngle();
         const fr = this.fuelRatio;
@@ -209,7 +211,7 @@ export const beam = {
 
         // Overdrive flash
         if (this.overdriveFlash > 0) {
-            const W = ctx.canvas.width;
+            const W = window.innerWidth || 1920;
             ctx.fillStyle = `rgba(255,248,224,${this.overdriveFlash * 0.08})`;
             ctx.fillRect(0, 0, W, H);
         }

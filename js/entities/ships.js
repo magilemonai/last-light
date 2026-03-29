@@ -7,6 +7,7 @@ import { lighthouse, beam } from './lighthouse.js';
 import { nightStats } from '../state.js';
 import { spawnParticle, triggerShake, addTallyFlash } from '../utils.js';
 import { playSound } from '../systems/audio.js';
+import { entityScale } from '../scaling.js';
 
 export let ships = [];
 
@@ -35,7 +36,8 @@ export function spawnShip(type) {
 
     const speeds = { skiff: CFG.ships.skiffSpeed, merchant: CFG.ships.merchantSpeed,
                      passenger: CFG.ships.passengerSpeed, ghostShip: CFG.ships.ghostShipSpeed };
-    const sizes = { skiff: 10, merchant: 18, passenger: 20, ghostShip: 16 };
+    const es = entityScale();
+    const sizes = { skiff: 10 * es, merchant: 18 * es, passenger: 20 * es, ghostShip: 16 * es };
 
     const ship = {
         type,

@@ -8,6 +8,7 @@ import { ships } from './ships.js';
 import { nightStats } from '../state.js';
 import { spawnParticle, triggerShake } from '../utils.js';
 import { playSound } from '../systems/audio.js';
+import { entityScale } from '../scaling.js';
 
 export let creatures = [];
 
@@ -21,8 +22,9 @@ export function spawnCreature(type) {
     const x = lighthouse.x + Math.cos(angle) * dist;
     const y = lighthouse.y + Math.sin(angle) * dist;
 
-    const sizes = { lurker: 12 + Math.random() * 6, flinch: 8 + Math.random() * 4,
-                    mimic: 10, abyssal: CFG.creatures.abyssalSize, shade: 10 + Math.random() * 4 };
+    const es = entityScale();
+    const sizes = { lurker: (12 + Math.random() * 6) * es, flinch: (8 + Math.random() * 4) * es,
+                    mimic: 10 * es, abyssal: CFG.creatures.abyssalSize * es, shade: (10 + Math.random() * 4) * es };
     const speeds = { lurker: CFG.creatures.lurkerSpeed, flinch: CFG.creatures.flinchSpeed,
                      mimic: CFG.creatures.mimicSpeed, abyssal: CFG.creatures.abyssalSpeed,
                      shade: CFG.creatures.shadeSpeed };
