@@ -57,10 +57,32 @@ export function spawnCreature(type) {
     });
 }
 
+// Cached active ship list for nearest-ship lookups (rebuilt once per frame)
+let cachedActiveShips = [];
+
+function rebuildShipCache() {
+    cachedActiveShips = [];
+    for (const s of ships) {
+        if (!s.sinking && s.type !== 'ghostShip') {
+            cachedActiveShips.push(s);
+        }
+    }
+}
+
+function findNearestShip(x, y) {
+    let nearest = null, nearestDist = Infinity;
+    for (const s of cachedActiveShips) {
+        const d = (x - s.x) ** 2 + (y - s.y) ** 2;
+        if (d < nearestDist) { nearestDist = d; nearest = s; }
+    }
+    return { ship: nearest, dist: Math.sqrt(nearestDist) };
+}
+
 export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassActive) {
     const W = window.innerWidth || 1920;
     const H = window.innerHeight || 1080;
     const aggressionMult = activeEvent === 'redTide' ? 1.5 : 1.0;
+    rebuildShipCache();
 
     for (const c of creatures) {
         // T3: Fade in over 1 second
@@ -149,13 +171,9 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
                 c.vx *= 0.97; c.vy *= 0.97;
                 if (c.fleeTimer <= 0) c.fleeing = false;
             } else {
-                let tx = lighthouse.x, ty = lighthouse.y;
-                let nearestDist = Infinity;
-                for (const s of ships) {
-                    if (s.sinking || s.type === 'ghostShip') continue;
-                    const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
-                    if (d < nearestDist) { nearestDist = d; tx = s.x; ty = s.y; }
-                }
+                const { ship: nearShip, dist: nearDist } = findNearestShip(c.x, c.y);
+                let tx = nearShip ? nearShip.x : lighthouse.x;
+                let ty = nearShip ? nearShip.y : lighthouse.y;
                 const dx = tx - c.x, dy = ty - c.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist > 0) {
@@ -165,8 +183,7 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
                 c.x += Math.sin(c.phase * 0.5) * 15 * dt;
                 c.y += Math.cos(c.phase * 0.3) * 10 * dt;
             }
-            for (const s of ships) {
-                if (s.sinking || s.type === 'ghostShip') continue;
+            for (const s of cachedActiveShips) {
                 const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
                 if (d < c.size + s.size) {
                     s.health -= dt * 1.0;
@@ -189,13 +206,9 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
                     c.frozen = false;
                     c.bolting = true;
                     c.boltTimer = CFG.creatures.flinchBoltDuration;
-                    let tx = lighthouse.x, ty = lighthouse.y;
-                    for (const s of ships) {
-                        if (s.sinking || s.type === 'ghostShip') continue;
-                        const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
-                        const d2 = Math.sqrt((tx - c.x) ** 2 + (ty - c.y) ** 2);
-                        if (d < d2) { tx = s.x; ty = s.y; }
-                    }
+                    const { ship: boltTarget } = findNearestShip(c.x, c.y);
+                    const tx = boltTarget ? boltTarget.x : lighthouse.x;
+                    const ty = boltTarget ? boltTarget.y : lighthouse.y;
                     c.boltAngle = Math.atan2(ty - c.y, tx - c.x);
                     playSound('flinch');
                 }
@@ -213,13 +226,8 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
                     playSound('repel');
                     nightStats.creaturesRepelled++;
                 } else {
-                    let nearestDist = Infinity;
-                    c.targetShip = null;
-                    for (const s of ships) {
-                        if (s.sinking || s.type === 'ghostShip') continue;
-                        const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
-                        if (d < nearestDist) { nearestDist = d; c.targetShip = s; }
-                    }
+                    const { ship: fTarget, dist: fDist } = findNearestShip(c.x, c.y);
+                    c.targetShip = fTarget;
                     if (c.targetShip) {
                         const dx = c.targetShip.x - c.x, dy = c.targetShip.y - c.y;
                         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -227,7 +235,7 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
                             c.x += (dx / dist) * c.speed * aggressionMult * dt;
                             c.y += (dy / dist) * c.speed * aggressionMult * dt;
                         }
-                        if (nearestDist < c.size + c.targetShip.size) {
+                        if (fDist < c.size + c.targetShip.size) {
                             c.targetShip.health -= dt * 0.4;
                             c.targetShip.angle += (Math.random() - 0.5) * 2 * dt;
                         }
@@ -282,12 +290,8 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
                     c.vx *= 0.97; c.vy *= 0.97;
                     if (c.fleeTimer <= 0) c.fleeing = false;
                 } else {
-                    let nearestDist = Infinity;
-                    for (const s of ships) {
-                        if (s.sinking || s.type === 'ghostShip') continue;
-                        const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
-                        if (d < nearestDist) { nearestDist = d; c.targetShip = s; }
-                    }
+                    const { ship: mTarget, dist: mDist } = findNearestShip(c.x, c.y);
+                    c.targetShip = mTarget;
                     if (c.targetShip) {
                         const dx = c.targetShip.x - c.x, dy = c.targetShip.y - c.y;
                         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -295,7 +299,7 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
                             c.x += (dx / dist) * c.speed * aggressionMult * dt;
                             c.y += (dy / dist) * c.speed * aggressionMult * dt;
                         }
-                        if (nearestDist < c.size + c.targetShip.size) {
+                        if (mDist < c.size + c.targetShip.size) {
                             c.targetShip.health -= dt * 0.4;
                         }
                     }
@@ -347,10 +351,9 @@ export function updateCreatures(dt, time, activeEvent, fogHornActive, spyglassAc
             }
 
             if (!targetX) {
-                for (const s of ships) {
-                    if (s.sinking || s.type === 'ghostShip') continue;
-                    const d = Math.sqrt((c.x - s.x) ** 2 + (c.y - s.y) ** 2);
-                    if (d < nearestDist) { nearestDist = d; targetX = s.x; targetY = s.y; c.targetShip = s; }
+                const { ship: lTarget, dist: lDist } = findNearestShip(c.x, c.y);
+                if (lTarget) {
+                    nearestDist = lDist; targetX = lTarget.x; targetY = lTarget.y; c.targetShip = lTarget;
                 }
             }
 

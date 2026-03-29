@@ -159,6 +159,13 @@ export const CFG = {
     ],
 };
 
+// Difficulty multipliers: [spawnCount, nightDuration, fuelDrain]
+export const DIFFICULTY = {
+    easy:   { spawnMult: 0.6, durationMult: 1.2, fuelDrainMult: 0.7, label: 'Easy' },
+    normal: { spawnMult: 1.0, durationMult: 1.0, fuelDrainMult: 1.0, label: 'Normal' },
+    hard:   { spawnMult: 1.4, durationMult: 0.85, fuelDrainMult: 1.3, label: 'Hard' },
+};
+
 export const UPGRADES = {
     // ── Keeper's Path: wider beam, defense, endurance ──
     lensPolish:    { name: 'Lens Polish',    desc: 'The lens needs cleaning. A polished lens throws a wider beam.',

@@ -2,7 +2,7 @@
 // LAST LIGHT — Screen Renders (title, dawn, upgrade, finale, record)
 // ═══════════════════════════════════════════════════════════════
 
-import { CFG, UPGRADES } from '../config.js';
+import { CFG, UPGRADES, DIFFICULTY } from '../config.js';
 import { input } from '../input.js';
 import { campaign, nightStats, getJournalEntry, hasSavedCampaign } from '../state.js';
 import { lighthouse, beam, renderLighthouse } from '../entities/lighthouse.js';
@@ -96,11 +96,29 @@ export function renderTitle(ctx, W, H, time) {
         renderTitle._hoverNew = false;
     }
 
+    // Difficulty selector
+    const diffY = H * 0.72;
+    const diffs = ['easy', 'normal', 'hard'];
+    const diffSpacing = Math.min(80, W * 0.12);
+    const diffHit = hitSize(10);
+    ctx.font = `${fontSize(11, 0.015, 'small')}px Georgia, serif`;
+    renderTitle._diffHovers = {};
+    for (let i = 0; i < diffs.length; i++) {
+        const dx = W / 2 + (i - 1) * diffSpacing;
+        const d = diffs[i];
+        const isActive = campaign.difficulty === d;
+        const hover = Math.abs(input.my - diffY) < diffHit && Math.abs(input.mx - dx) < diffSpacing * 0.4;
+        renderTitle._diffHovers[d] = hover;
+        ctx.fillStyle = isActive ? '#ffcc44' : hover ? 'rgba(255,204,68,0.6)' : 'rgba(150,145,135,0.3)';
+        ctx.fillText(DIFFICULTY[d].label, dx, diffY);
+    }
+
     renderVignette(ctx, W, H);
 }
 // Static properties for click detection
 renderTitle._hoverContinue = false;
 renderTitle._hoverNew = false;
+renderTitle._diffHovers = {};
 
 // ── Night Intro ──
 export function renderNightIntro(ctx, W, H, time, stateTimer, nightNum) {
@@ -401,6 +419,40 @@ export function renderUpgrade(ctx, W, H, time, stateTimer) {
         if (campaign.upgrades.includes('fogHorn')) hints.push('F \u2014 Fog Horn');
         if (campaign.upgrades.includes('spyglass')) hints.push('G \u2014 Spyglass');
         ctx.fillText(hints.join('    '), W / 2, H * 0.94);
+    }
+
+    // Log Book wreck map — show on upgrade screen for strategic planning
+    if (campaign.upgrades.includes('logBook') && campaign.wreckPositions.length > 0) {
+        const mapW = Math.min(100, W * 0.15);
+        const mapH = mapW * 0.7;
+        const mapX = W - mapW - 15;
+        const mapY = H - mapH - 15;
+        ctx.fillStyle = 'rgba(10,14,20,0.5)';
+        ctx.fillRect(mapX - 2, mapY - 2, mapW + 4, mapH + 4);
+        ctx.strokeStyle = 'rgba(255,100,60,0.15)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(mapX - 2, mapY - 2, mapW + 4, mapH + 4);
+        // Wreck markers
+        for (const wp of campaign.wreckPositions) {
+            const wx = mapX + wp.x * mapW;
+            const wy = mapY + wp.y * mapH;
+            ctx.strokeStyle = 'rgba(255,100,60,0.4)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(wx - 3, wy - 3); ctx.lineTo(wx + 3, wy + 3);
+            ctx.moveTo(wx + 3, wy - 3); ctx.lineTo(wx - 3, wy + 3);
+            ctx.stroke();
+        }
+        // Lighthouse marker
+        ctx.fillStyle = 'rgba(255,204,68,0.5)';
+        ctx.beginPath();
+        ctx.arc(mapX + 0.5 * mapW, mapY + 0.82 * mapH, 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Label
+        ctx.fillStyle = 'rgba(255,100,60,0.3)';
+        ctx.font = `${fontSize(8, 0.01, 'tiny')}px Georgia, serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText('Wrecks', mapX + mapW / 2, mapY - 6);
     }
 
     ctx.globalAlpha = 1;

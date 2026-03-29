@@ -470,6 +470,8 @@ export function stopPianoSequence() {
     }
 }
 
+let beamHissNode = null;
+
 export function startAmbient() {
     try {
         const ac = getAudio();
@@ -524,7 +526,7 @@ export function startAmbient() {
         windFilter.connect(windGain);
         windGain.connect(masterGain);
         windSrc.start();
-        windNode = { source: windSrc, gain: windGain };
+        windNode = { source: windSrc, gain: windGain, filter: windFilter };
 
         // Creaking wood — periodic noise bursts
         const creakBufSize = ac.sampleRate * 4;
@@ -552,6 +554,45 @@ export function startAmbient() {
         creakSrc.start();
         creakNode = { source: creakSrc, gain: creakGain };
 
+        // Beam hiss — warm filtered noise that follows fuel level
+        const hissBufSize = ac.sampleRate * 2;
+        const hissBuf = ac.createBuffer(1, hissBufSize, ac.sampleRate);
+        const hissData = hissBuf.getChannelData(0);
+        let hLast = 0;
+        for (let i = 0; i < hissBufSize; i++) {
+            const w = Math.random() * 2 - 1;
+            hLast = (hLast + (0.03 * w)) / 1.03;
+            hissData[i] = hLast * 2.5;
+        }
+        const hissSrc = ac.createBufferSource();
+        hissSrc.buffer = hissBuf;
+        hissSrc.loop = true;
+        const hissGain = ac.createGain();
+        hissGain.gain.value = 0;
+        const hissFilter = ac.createBiquadFilter();
+        hissFilter.type = 'bandpass';
+        hissFilter.frequency.value = 250;
+        hissFilter.Q.value = 0.4;
+        hissSrc.connect(hissFilter);
+        hissFilter.connect(hissGain);
+        hissGain.connect(masterGain);
+        hissSrc.start();
+        beamHissNode = { source: hissSrc, gain: hissGain, filter: hissFilter };
+
+    } catch(e) {}
+}
+
+// Update beam hiss based on fuel ratio (called per-frame from game loop)
+export function updateBeamHiss(fuelRatio) {
+    if (!beamHissNode || !audioCtx) return;
+    try {
+        const now = audioCtx.currentTime;
+        // Warm hiss proportional to fuel — louder when full, fades when depleted
+        const targetGain = fuelRatio * 0.025;
+        beamHissNode.gain.gain.linearRampToValueAtTime(targetGain, now + 0.1);
+        // Shift filter warmth — higher fuel = warmer (lower center freq)
+        const targetFreq = 180 + (1 - fuelRatio) * 200;
+        beamHissNode.filter.frequency.linearRampToValueAtTime(targetFreq, now + 0.1);
     } catch(e) {}
 }
 
@@ -570,12 +611,33 @@ export function updateAmbientForEvent(event) {
         if (event === 'storm') {
             ambientNode.gain.gain.linearRampToValueAtTime(0.08, now + 0.5);
             ambientNode.filter.frequency.linearRampToValueAtTime(500, now + 0.5);
-            if (windNode) windNode.gain.gain.linearRampToValueAtTime(0.05, now + 0.5);
-            if (creakNode) creakNode.gain.gain.linearRampToValueAtTime(0.03, now + 0.5);
+            if (windNode) {
+                windNode.gain.gain.linearRampToValueAtTime(0.06, now + 0.5);
+                windNode.filter.frequency.linearRampToValueAtTime(900, now + 0.5);
+            }
+            if (creakNode) creakNode.gain.gain.linearRampToValueAtTime(0.04, now + 0.5);
         } else if (event === 'fog') {
-            if (windNode) windNode.gain.gain.linearRampToValueAtTime(0.005, now + 0.5);
+            ambientNode.gain.gain.linearRampToValueAtTime(0.04, now + 0.5);
+            ambientNode.filter.frequency.linearRampToValueAtTime(250, now + 0.5);
+            if (windNode) {
+                windNode.gain.gain.linearRampToValueAtTime(0.005, now + 0.5);
+                windNode.filter.frequency.linearRampToValueAtTime(300, now + 0.5);
+            }
+            if (creakNode) creakNode.gain.gain.linearRampToValueAtTime(0.02, now + 0.5);
+        } else if (event === 'redTide') {
+            ambientNode.gain.gain.linearRampToValueAtTime(0.06, now + 0.5);
+            ambientNode.filter.frequency.linearRampToValueAtTime(400, now + 0.5);
+            if (windNode) {
+                windNode.gain.gain.linearRampToValueAtTime(0.015, now + 0.5);
+                windNode.filter.frequency.linearRampToValueAtTime(500, now + 0.5);
+            }
+        } else if (event === 'newMoon') {
+            ambientNode.gain.gain.linearRampToValueAtTime(0.04, now + 0.5);
+            if (windNode) {
+                windNode.gain.gain.linearRampToValueAtTime(0.03, now + 0.5);
+                windNode.filter.frequency.linearRampToValueAtTime(700, now + 0.5);
+            }
         } else if (event === 'deadCalm') {
-            // T4: Night 14 eerie silence — almost no ambient
             ambientNode.gain.gain.linearRampToValueAtTime(0.01, now + 1.0);
             ambientNode.filter.frequency.linearRampToValueAtTime(150, now + 1.0);
             if (windNode) windNode.gain.gain.linearRampToValueAtTime(0.0, now + 0.5);
@@ -583,7 +645,10 @@ export function updateAmbientForEvent(event) {
         } else {
             ambientNode.gain.gain.linearRampToValueAtTime(0.05, now + 0.5);
             ambientNode.filter.frequency.linearRampToValueAtTime(350, now + 0.5);
-            if (windNode) windNode.gain.gain.linearRampToValueAtTime(0.02, now + 0.5);
+            if (windNode) {
+                windNode.gain.gain.linearRampToValueAtTime(0.02, now + 0.5);
+                windNode.filter.frequency.linearRampToValueAtTime(600, now + 0.5);
+            }
         }
     } catch(e) {}
 }

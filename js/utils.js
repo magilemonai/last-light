@@ -43,10 +43,17 @@ export const ease = {
 
 // ── Particle System ──
 const particles = [];
-const MAX_PARTICLES = 400;
+const MAX_PARTICLES = 600;
 
 export function spawnParticle(x, y, opts = {}) {
-    if (particles.length >= MAX_PARTICLES) return;
+    if (particles.length >= MAX_PARTICLES) {
+        // Evict the oldest (shortest remaining life) particle
+        let minIdx = 0, minLife = particles[0].life;
+        for (let i = 1; i < particles.length; i++) {
+            if (particles[i].life < minLife) { minLife = particles[i].life; minIdx = i; }
+        }
+        particles.splice(minIdx, 1);
+    }
     const angle = opts.angle ?? Math.random() * Math.PI * 2;
     const speed = opts.speed ?? (20 + Math.random() * 60);
     particles.push({
@@ -147,7 +154,7 @@ export function renderTallyFlashes(ctx) {
         ctx.save();
         ctx.globalAlpha = alpha * 0.7;
         ctx.fillStyle = '#ffcc44';
-        ctx.font = `bold ${14}px Georgia, serif`;
+        ctx.font = `bold 14px Georgia, serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(f.text, f.x, f.y);

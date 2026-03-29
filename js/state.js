@@ -24,6 +24,8 @@ export const campaign = {
     finalChoice: null,
     totalSaved: 0,
     totalLost: 0,
+    wreckPositions: [],
+    difficulty: 'normal', // easy, normal, hard
 };
 
 export const nightStats = {
@@ -51,6 +53,8 @@ export function resetCampaign() {
     campaign.finalChoice = null;
     campaign.totalSaved = 0;
     campaign.totalLost = 0;
+    campaign.wreckPositions = [];
+    // difficulty preserved across resets (player preference)
 }
 
 // ── Journal Entries ──
